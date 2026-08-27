@@ -273,8 +273,9 @@
 
   // ---- 联机状态 ----
   const net = {
-    mode: 'coop', role: null, peer: null, conn: null, connected: false,
+    mode: 'coop', role: null, client: null, connected: false,
     started: false, pendingStart: false, room: '', lastWin: false,
+    selfId: '', topic: null, brokerIdx: 0,
     remoteInput: { up:false, down:false, left:false, right:false, fire:false, skill:false, skillIdx:0, prevSkill:false },
     snapTick: 0, inTick: 0, lastSnap: 0, retry: 0,
   };
@@ -670,7 +671,7 @@
     }
   }
   function sendSnapshot() {
-    if (!net.conn) return;
+    if (!net.client) return;
     const snap = {
       t:'snap', started: net.started, over: state.over, win: state.win, hostWon: net.lastWin,
       wave: state.wave, score: state.score, coins: state.coins, intermission: state.intermission,
@@ -684,7 +685,7 @@
       obstacles: obstacles.map(o=>({x:o.x,y:o.y,w:o.w,h:o.h,type:o.type,hp:o.hp})),
       effects: effects.map(ef=>({type:ef.type,x:ef.x,y:ef.y,angle:ef.angle,len:ef.len,r:ef.r,maxR:ef.maxR,life:ef.life,color:ef.color})),
     };
-    try { net.conn.send(snap); } catch(e){}
+    try { net.client.publish(net.topic, JSON.stringify(snap)); } catch(e){}
   }
   function applySnapshot(s) {
     net.lastSnap = Date.now();
@@ -710,9 +711,9 @@
     if (s.over && !state.over) { const gw = net.mode==='pvp' ? !s.hostWon : s.hostWon; gameOver(gw); }
   }
   function sendInput() {
-    if (!net.conn) return;
+    if (!net.client) return;
     const inp = { t:'in', up:keys['w']||keys['arrowup'], down:keys['s']||keys['arrowdown'], left:keys['a']||keys['arrowleft'], right:keys['d']||keys['arrowright'], fire:!!keys[' '], skill:!!keys['f'], skillIdx:player.activeSkill };
-    try { net.conn.send(inp); } catch(e){}
+    try { net.client.publish(net.topic, JSON.stringify(inp)); } catch(e){}
   }
   function onData(data) {
     if (!data || !data.t) return;
@@ -724,53 +725,87 @@
     }
     else if (data.t === 'snap') applySnapshot(data);
   }
-  function genRoomCode() { const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s=''; for(let i=0;i<6;i++) s+=chars[Math.floor(Math.random()*chars.length)]; return s; }
-  function setupConn(c) {
-    net.conn = c;
-    c.on('open', () => {
-      net.connected = true;
-      if (net.role==='host') { netStatus('队友已连接！点"开始游戏"开始'); try{ c.send({t:'config',mode:net.mode}); }catch(e){} if (net.pendingStart){ net.pendingStart=false; startGame(); } }
-      else { netStatus('已连接！等待房主开始…'); try{ c.send({t:'hello'}); }catch(e){} state.running=true; overlay.classList.remove('hidden'); overlay.querySelector('h1').textContent='已连接'; overlay.querySelector('p').textContent='等待房主开始游戏…'; startBtn.textContent='等待中'; }
-    });
-    c.on('data', onData);
-    c.on('error', (e) => { netStatus('连接出错：'+(e.type||e.message)); });
-    c.on('close', () => {
-      net.connected = false;
-      if (net.role==='host') { netStatus('队友已断开。点"再来一局"可重新开始'); if (state.running && !state.over) gameOver(false); }
-      else { netStatus('连接已断开。可重新输入房间码加入，再来一局'); if (state.running && !state.over) gameOver(false); }
-    });
+  function genRoomCode() {
+    const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let s = String(net.brokerIdx % 10);      // 首字符编码所选 broker，保证双方连同一台
+    for (let i=0;i<5;i++) s += chars[Math.floor(Math.random()*chars.length)];
+    return s;
   }
-  function connectGuest() {
-    if (!net.peer || !net.room) return;
-    netStatus('正在连接房间…（第 '+(net.retry+1)+' 次）');
-    let settled = false;
-    const c = net.peer.connect(net.room, { reliable: true });
-    const to = setTimeout(() => { if (!settled) fail({type:'timeout'}); }, 5000);
-    function fail(e) {
-      if (settled) return; settled = true; clearTimeout(to);
-      net.retry++;
-      if (net.retry < 4) { netStatus('连接失败，'+(net.retry*1.2).toFixed(1)+' 秒后重试…'); setTimeout(connectGuest, 1200*net.retry); }
-      else { netStatus('连接失败：请确认房间码正确、房主已就绪，并刷新页面重试'); }
+  // ---- 联机：MQTT over WebSocket 中继（不依赖 WebRTC / 无需自建服务器）----
+  const BROKERS = [
+    'wss://broker.emqx.io:8084/mqtt',
+    'wss://broker-cn.emqx.io:8084/mqtt',
+    'wss://test.mosquitto.org:8081/mqtt',
+  ];
+  function publish(msg) {
+    if (!net.client || !net.topic) return;
+    msg.from = net.selfId;
+    try { net.client.publish(net.topic, JSON.stringify(msg)); } catch(e){}
+  }
+  function ensureTopic() {
+    if (net.topic) return;
+    if (net.role === 'host') net.room = genRoomCode();
+    net.topic = 'tankgame/' + net.room;
+  }
+  function onBrokerReady() {
+    if (net.role === 'host') {
+      netStatus('房间码：' + net.room + '（发给朋友即可加入）');
+      const bH = document.getElementById('btnHost'); if (bH) bH.disabled = true;
+      const rI = document.getElementById('roomCode'); if (rI) rI.value = net.room;
+      publish({ t:'config', mode: net.mode });
+      if (net.pendingStart) { net.pendingStart = false; startGame(); }
+    } else {
+      netStatus('已连接！等待房主开始…');
+      publish({ t:'hello' });
+      state.running = true;
+      overlay.classList.remove('hidden');
+      overlay.querySelector('h1').textContent = '已连接';
+      overlay.querySelector('p').textContent = '等待房主开始游戏…';
+      startBtn.textContent = '等待中';
     }
-    c.on('open', () => { if (settled) return; settled=true; clearTimeout(to); net.retry=0; setupConn(c); });
-    c.on('error', fail);
+  }
+  function tryConnect(idx) {
+    if (net.role === 'guest') idx = net.brokerIdx;   // 加入方必须连房主所在的 broker
+    if (idx >= BROKERS.length) { netStatus('连接失败：无法连到公共消息服务器，请检查网络或稍后重试'); return; }
+    net.brokerIdx = idx;
+    const url = BROKERS[idx];
+    netStatus('正在连接服务器…（' + (idx+1) + '/' + BROKERS.length + '）');
+    let client;
+    try { client = mqtt.connect(url, { clientId: net.selfId, clean: true, reconnectPeriod: 2000, connectTimeout: 8000 }); }
+    catch (e) { if (net.role==='host') tryConnect(idx+1); else netStatus('连接失败：' + e.message); return; }
+    net.client = client;
+    let connectedOnce = false, done = false;
+    client.on('connect', () => {
+      connectedOnce = true; net.connected = true;
+      ensureTopic();
+      client.subscribe(net.topic, { qos: 0 }, (err) => { if (err) { netStatus('订阅失败：' + err.message); return; } onBrokerReady(); });
+    });
+    client.on('message', (topic, payload) => {
+      let m; try { m = JSON.parse(payload.toString()); } catch (e) { return; }
+      if (!m || m.from === net.selfId) return;
+      onData(m);
+    });
+    client.on('error', (e) => {
+      if (done) return; done = true;
+      const msg = (e && e.message) ? e.message : ('' + e);
+      if (!connectedOnce) {
+        if (net.role === 'host') { try { client.end(true); } catch(_){} tryConnect(idx+1); }
+        else netStatus('连接错误：' + msg + '（请确认房间码正确）');
+      } else netStatus('连接错误：' + msg);
+    });
+    client.on('close', () => {
+      if (!connectedOnce) return;     // 连接前的断开由 error 处理
+      net.connected = false;
+      netStatus('连接已断开，可重新加入再来一局');
+      if (state.running && !state.over) gameOver(false);
+    });
   }
   function setupNet(role) {
-    if (typeof Peer === 'undefined') { netStatus('联机组件加载失败，请刷新后重试'); return false; }
-    net.role = role; net.connected=false;
-    const ice = { iceServers: [
-      { urls:'stun:stun.l.google.com:19302' },
-      { urls:'stun:stun1.l.google.com:19302' },
-      { urls:'stun:stun.cloudflare.com:3478' },
-    ]};
-    try { net.peer = role==='host' ? new Peer(genRoomCode(), {config:ice}) : new Peer({config:ice}); }
-    catch(e) { netStatus('无法创建连接：'+e.message); return false; }
-    net.peer.on('open', (id) => {
-      if (role==='host') { net.room=id; netStatus('房间码：'+id+'（发给朋友即可加入）'); const bH=document.getElementById('btnHost'); if(bH) bH.disabled=true; const rI=document.getElementById('roomCode'); if(rI) rI.value=id; }
-      else { net.retry=0; netStatus('正在连接房间…'); connectGuest(); }
-    });
-    net.peer.on('connection', (c) => { setupConn(c); netStatus('队友已加入！点"开始游戏"开始'); });
-    net.peer.on('error', (e) => { netStatus('连接错误：'+(e.type||e.message)); });
+    if (typeof mqtt === 'undefined') { netStatus('联机组件加载失败，请刷新后重试'); return false; }
+    net.role = role; net.connected = false; net.topic = null; net.started = false;
+    net.brokerIdx = (role === 'guest') ? (parseInt((net.room || '0')[0], 10) || 0) : 0;
+    net.selfId = (role === 'host' ? 'h' : 'g') + Math.random().toString(36).slice(2, 12);
+    tryConnect(net.brokerIdx);
     return true;
   }
 
@@ -1023,13 +1058,13 @@
       const b = e.target.closest('button[data-mode]'); if (!b) return;
       net.mode = b.dataset.mode;
       [...mc.children].forEach(c => c.classList.toggle('active', c===b));
-      if (net.role==='host' && net.conn) { try{ net.conn.send({t:'config',mode:net.mode}); }catch(e){} }
+      if (net.role==='host' && net.client) publish({t:'config',mode:net.mode});
     });
     if (bH) bH.addEventListener('click', () => {
       initAudio();
       if (net.role==='host' && net.connected) { netStatus('房主房间已就绪，点"开始游戏"开始'); return; }
-      if (net.peer && !net.connected) { try { net.peer.destroy(); } catch(e){} }
-      net.role=null; net.conn=null;
+      if (net.client) { try { net.client.end(true); } catch(e){} }
+      net.role=null; net.client=null; net.connected=false; net.topic=null;
       setupNet('host');
     });
     if (bJ) bJ.addEventListener('click', () => {
@@ -1037,8 +1072,8 @@
       const code = (rI.value||'').trim().toUpperCase();
       if (!code) { netStatus('请输入房间码'); return; }
       if (net.role==='guest' && net.connected) { netStatus('已连接，请等待房主开始'); return; }
-      if (net.peer && !net.connected) { try { net.peer.destroy(); } catch(e){} }
-      net.role=null; net.conn=null;
+      if (net.client) { try { net.client.end(true); } catch(e){} }
+      net.role=null; net.client=null; net.connected=false; net.topic=null;
       net.room = code; net.retry=0; setupNet('guest');
     });
   }

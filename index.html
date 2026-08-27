@@ -88,7 +88,7 @@
     <p style="font-size:13px;color:#6f78a8;">每清空一波会掉落 buff（治疗 / 多发子弹 / 队友）；击杀赚取积分，用 F 放技能。</p>
     <button id="start">开始游戏</button>
   </div>
-  <div id="tip">提示：自动锁定最近的敌人开火；清空一波后开过去捡 buff；积分用来放激光/导弹/剑气。</div>
+  <div id="tip">提示：第 4、8 波会出现 BOSS！用技能集火，清空一波后开过去捡 buff，积分用来放激光/导弹/剑气。</div>
 </div>
 
 <script>
@@ -212,13 +212,60 @@
     if (side === 0) { x = rand(40, W-40); y = -30; }
     else if (side === 1) { x = -30; y = rand(60, H-120); }
     else { x = W + 30; y = rand(60, H-120); }
-    enemies.push({ x, y, r: 17, speed: rand(1.1, 1.9), angle: 0, hp: 3, maxHp: 3, cooldown: rand(40, 120), color: '#ff7b7b' });
+    const roll = Math.random(), w = state.wave;
+    let type, r, hp, speed, color, dmg, cd;
+    if (roll < 0.55) {            // 普通兵
+      type='grunt'; r=17; hp=3+Math.floor(w/3); speed=rand(1.2,2.0)+w*0.04; color='#ff7b7b'; dmg=9; cd=rand(60,120)-w*3;
+    } else if (roll < 0.8) {      // 快速兵（脆但快）
+      type='fast'; r=14; hp=2+Math.floor(w/4); speed=rand(2.2,3.1); color='#ffd27b'; dmg=7; cd=rand(90,150);
+    } else {                      // 重装兵（肉、慢、高伤）
+      type='heavy'; r=22; hp=7+Math.floor(w/2); speed=rand(0.8,1.3); color='#c06bff'; dmg=14; cd=rand(50,90);
+    }
+    cd = Math.max(30, cd);
+    enemies.push({ x, y, r, speed, angle: 0, hp, maxHp: hp, cooldown: rand(20, cd), color, dmg, type });
   }
 
-  function fireBullet(obj, fromEnemy, angleOverride) {
+  function spawnBoss(n) {
+    const hp = n === 8 ? 140 : 75;
+    enemies.push({ x: W/2, y: -40, r: 46, speed: 1.15, angle: Math.PI/2, hp, maxHp: hp, cooldown: 60, color: '#ff3b6b', dmg: 12, type: 'boss', boss: true, atkTimer: 70, pattern: 0, summonTimer: 320 });
+    spawnEnemy(); spawnEnemy();
+    floatText(player.x, player.y - 50, '⚠ BOSS 来袭!', '#ff5b5b');
+  }
+  function updateBoss(e) {
+    const ang = Math.atan2(player.y - e.y, player.x - e.x);
+    const d = dist(e.x, e.y, player.x, player.y);
+    const want = 170;
+    if (d > want + 25) { e.x += Math.cos(ang) * e.speed; e.y += Math.sin(ang) * e.speed; }
+    else if (d < want - 25) { e.x -= Math.cos(ang) * e.speed; e.y -= Math.sin(ang) * e.speed; }
+    e.angle = ang;
+    pushOutOfObstacles(e);
+    e.atkTimer--;
+    if (e.atkTimer <= 0) {
+      e.pattern = (e.pattern + 1) % 2;
+      if (e.pattern === 0) {                 // 环形弹幕
+        const N = 14;
+        for (let k = 0; k < N; k++) fireBullet(e, true, ang + k / N * Math.PI * 2, e.dmg);
+        e.atkTimer = 110;
+      } else {                                // 三连瞄准
+        for (const off of [-0.18, 0, 0.18]) fireBullet(e, true, ang + off, e.dmg);
+        e.atkTimer = 60;
+      }
+    }
+    e.summonTimer--;
+    if (e.summonTimer <= 0 && enemies.length < 7) { spawnEnemy(); e.summonTimer = 340; }
+  }
+  function onBossDeath(e) {
+    burst(e.x, e.y, '#ff3b6b', 40); burst(e.x, e.y, '#ffd27b', 30);
+    state.score += 200; state.coins += 200; updateHUD();
+    spawnWaveBuffs(3);
+    floatText(e.x, e.y - 20, 'BOSS 击破! +200', '#ffd27b');
+    playSound('waveclear');
+  }
+
+  function fireBullet(obj, fromEnemy, angleOverride, dmg) {
     const a = angleOverride !== undefined ? angleOverride : obj.angle;
     const sp = 7.5;
-    bullets.push({ x: obj.x + Math.cos(a) * (obj.r + 4), y: obj.y + Math.sin(a) * (obj.r + 4), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 4, fromEnemy: !!fromEnemy, life: 120 });
+    bullets.push({ x: obj.x + Math.cos(a) * (obj.r + 4), y: obj.y + Math.sin(a) * (obj.r + 4), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 4, fromEnemy: !!fromEnemy, dmg: dmg || 9, life: 120 });
   }
   function firePlayer() {
     playSound('shoot');
@@ -259,6 +306,7 @@
     if (e.hp <= 0) {
       e.dead = true; state.score += 10 * state.wave; state.coins += 20 * state.wave;
       burst(e.x, e.y, '#ff7b7b', 18); playSound('explode'); updateHUD();
+      if (e.boss) onBossDeath(e);
     }
   }
 
@@ -317,7 +365,9 @@
   }
 
   function startWave(n) {
-    state.wave = n; state.toSpawn = 2 + n; state.spawnTimer = 0;
+    state.wave = n; state.spawnTimer = 0;
+    if (n === 4 || n === 8) { state.toSpawn = 0; spawnBoss(n); }
+    else state.toSpawn = 2 + n;
     updateHUD();
   }
 
@@ -430,13 +480,14 @@
     // --- 敌人 AI ---
     const minDistToPlayer = 30;
     for (const e of enemies) {
+      if (e.boss) { updateBoss(e); continue; }
       const ang = Math.atan2(player.y - e.y, player.x - e.x);
       const d = dist(e.x, e.y, player.x, player.y);
       let nx = e.x, ny = e.y;
       if (d > e.r + player.r + minDistToPlayer) { nx = e.x + Math.cos(ang) * e.speed; ny = e.y + Math.sin(ang) * e.speed; }
       const mv = slideMove(e, nx, ny); e.x = mv.x; e.y = mv.y; e.angle = ang;
       e.cooldown--;
-      if (e.cooldown <= 0 && d < 460) { fireBullet(e, true); e.cooldown = rand(70, 130); }
+      if (e.cooldown <= 0 && d < 480) { fireBullet(e, true, undefined, e.dmg); e.cooldown = rand(70, 130); }
     }
     // 敌人互相分离
     for (let i = 0; i < enemies.length; i++) {
@@ -490,13 +541,13 @@
       if (b.life <= 0) continue;
       if (b.fromEnemy) {
         if (dist(b.x, b.y, player.x, player.y) < player.r + b.r) {
-          player.hp -= 9; b.life = 0; burst(player.x, player.y, '#ff5b5b', 10); playSound('hit'); updateHUD();
+          player.hp -= b.dmg || 9; b.life = 0; burst(player.x, player.y, '#ff5b5b', 10); playSound('hit'); updateHUD();
           if (player.hp <= 0) { gameOver(false); return; }
         } else {
           for (const tm of teammates) {
             if (tm.dead) continue;
             if (dist(b.x, b.y, tm.x, tm.y) < tm.r + b.r) {
-              tm.hp -= 9; b.life = 0; burst(tm.x, tm.y, '#9b8cff', 10);
+              tm.hp -= b.dmg || 9; b.life = 0; burst(tm.x, tm.y, '#9b8cff', 10);
               if (tm.hp <= 0) { tm.dead = true; burst(tm.x, tm.y, '#9b8cff', 16); }
               break;
             }
@@ -557,6 +608,7 @@
     let body, turret, dome;
     if (kind === 'player') { body = t.color; turret = '#36c9a6'; dome = '#d7fff4'; }
     else if (kind === 'ally') { body = '#9b8cff'; turret = '#6c5bd6'; dome = '#e6e0ff'; }
+    else if (kind === 'boss') { body = '#7a1f3d'; turret = '#ff3b6b'; dome = '#ffd7d7'; }
     else { body = '#3a2230'; turret = '#ff5b5b'; dome = '#ffd7d7'; }
     ctx.save(); ctx.translate(t.x, t.y); ctx.rotate(t.angle);
     ctx.fillStyle = '#1b2036';
@@ -638,9 +690,20 @@
     }
 
     // 敌人
-    for (const e of enemies) drawTank(e, 'enemy');
+    for (const e of enemies) drawTank(e, e.boss ? 'boss' : 'enemy');
     // 玩家
     if (!state.over) drawTank(player, 'player');
+
+    // Boss 血条
+    const boss = enemies.find(e => e.boss);
+    if (boss) {
+      const bw = 420, bx = W/2 - bw/2, by = 16;
+      ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(bx-2, by-2, bw+4, 16);
+      ctx.fillStyle = '#3a1020'; ctx.fillRect(bx, by, bw, 12);
+      ctx.fillStyle = '#ff3b6b'; ctx.fillRect(bx, by, bw * clamp(boss.hp/boss.maxHp,0,1), 12);
+      ctx.fillStyle = '#ffd7d7'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('BOSS', W/2, by + 6);
+    }
 
     // 玩家血条 + 增益
     if (!state.over) {

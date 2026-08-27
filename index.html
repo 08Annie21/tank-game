@@ -660,8 +660,14 @@
   function applySnapshot(s) {
     state.wave=s.wave; state.score=s.score; state.coins=s.coins; state.intermission=s.intermission;
     state.over=s.over; state.win=s.win;
-    copyTank(player, s.player);
-    if (s.player2) { if (!player2) player2=makeTank(true); copyTank(player2, s.player2); } else player2=null;
+    if (net.role==='guest') {
+      // guest 的本机坦克 = 快照里的 player2；远端房主坦克 = player
+      copyTank(player, s.player2);
+      if (s.player) { if (!player2) player2=makeTank(false); copyTank(player2, s.player); } else player2=null;
+    } else {
+      copyTank(player, s.player);
+      if (s.player2) { if (!player2) player2=makeTank(true); copyTank(player2, s.player2); } else player2=null;
+    }
     enemies = s.enemies.map(e=>({x:e.x,y:e.y,angle:e.angle,r:e.r,hp:e.hp,maxHp:e.maxHp,color:e.color,type:e.type,dmg:e.dmg,boss:e.boss,atkTimer:e.atkTimer,pattern:e.pattern,summonTimer:e.summonTimer,cooldown:e.cooldown}));
     bullets = s.bullets.map(b=>({x:b.x,y:b.y,vx:b.vx,vy:b.vy,r:b.r,owner:b.owner,fromEnemy:b.fromEnemy,dmg:b.dmg,life:b.life,bounces:b.bounces}));
     missiles = s.missiles.map(m=>({x:m.x,y:m.y,vx:m.vx,vy:m.vy,life:m.life,turn:0.09}));

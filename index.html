@@ -276,7 +276,7 @@
     mode: 'coop', role: null, peer: null, conn: null, connected: false,
     started: false, pendingStart: false, room: '', lastWin: false,
     remoteInput: { up:false, down:false, left:false, right:false, fire:false, skill:false, skillIdx:0, prevSkill:false },
-    snapTick: 0, inTick: 0,
+    snapTick: 0, inTick: 0, lastSnap: 0, retry: 0,
   };
   function netStatus(s){ const el=document.getElementById('netStatus'); if(el) el.textContent=s; }
 
@@ -687,6 +687,7 @@
     try { net.conn.send(snap); } catch(e){}
   }
   function applySnapshot(s) {
+    net.lastSnap = Date.now();
     state.wave=s.wave; state.score=s.score; state.coins=s.coins; state.intermission=s.intermission;
     state.over=s.over; state.win=s.win;
     if (net.role==='guest') {
@@ -705,7 +706,7 @@
     obstacles = s.obstacles.map(o=>({x:o.x,y:o.y,w:o.w,h:o.h,type:o.type,hp:o.hp,dead:false}));
     effects = s.effects.map(ef=>({type:ef.type,x:ef.x,y:ef.y,angle:ef.angle,len:ef.len,r:ef.r,maxR:ef.maxR,life:ef.life,color:ef.color}));
     updateHUD();
-    if (s.started && !s.over) { net.started=true; overlay.classList.add('hidden'); }
+    if (s.started && !s.over) { net.started=true; if (net.role==='guest') state.running=true; overlay.classList.add('hidden'); }
     if (s.over && !state.over) { const gw = net.mode==='pvp' ? !s.hostWon : s.hostWon; gameOver(gw); }
   }
   function sendInput() {
@@ -732,16 +733,41 @@
       else { netStatus('已连接！等待房主开始…'); try{ c.send({t:'hello'}); }catch(e){} state.running=true; overlay.classList.remove('hidden'); overlay.querySelector('h1').textContent='已连接'; overlay.querySelector('p').textContent='等待房主开始游戏…'; startBtn.textContent='等待中'; }
     });
     c.on('data', onData);
-    c.on('close', () => { net.connected=false; netStatus('连接已断开'); if (state.running) gameOver(false); });
+    c.on('error', (e) => { netStatus('连接出错：'+(e.type||e.message)); });
+    c.on('close', () => {
+      net.connected = false;
+      if (net.role==='host') { netStatus('队友已断开。点"再来一局"可重新开始'); if (state.running && !state.over) gameOver(false); }
+      else { netStatus('连接已断开。可重新输入房间码加入，再来一局'); if (state.running && !state.over) gameOver(false); }
+    });
+  }
+  function connectGuest() {
+    if (!net.peer || !net.room) return;
+    netStatus('正在连接房间…（第 '+(net.retry+1)+' 次）');
+    let settled = false;
+    const c = net.peer.connect(net.room, { reliable: true });
+    const to = setTimeout(() => { if (!settled) fail({type:'timeout'}); }, 5000);
+    function fail(e) {
+      if (settled) return; settled = true; clearTimeout(to);
+      net.retry++;
+      if (net.retry < 4) { netStatus('连接失败，'+(net.retry*1.2).toFixed(1)+' 秒后重试…'); setTimeout(connectGuest, 1200*net.retry); }
+      else { netStatus('连接失败：请确认房间码正确、房主已就绪，并刷新页面重试'); }
+    }
+    c.on('open', () => { if (settled) return; settled=true; clearTimeout(to); net.retry=0; setupConn(c); });
+    c.on('error', fail);
   }
   function setupNet(role) {
     if (typeof Peer === 'undefined') { netStatus('联机组件加载失败，请刷新后重试'); return false; }
     net.role = role; net.connected=false;
-    try { net.peer = role==='host' ? new Peer(genRoomCode()) : new Peer(); }
+    const ice = { iceServers: [
+      { urls:'stun:stun.l.google.com:19302' },
+      { urls:'stun:stun1.l.google.com:19302' },
+      { urls:'stun:stun.cloudflare.com:3478' },
+    ]};
+    try { net.peer = role==='host' ? new Peer(genRoomCode(), {config:ice}) : new Peer({config:ice}); }
     catch(e) { netStatus('无法创建连接：'+e.message); return false; }
     net.peer.on('open', (id) => {
       if (role==='host') { net.room=id; netStatus('房间码：'+id+'（发给朋友即可加入）'); const bH=document.getElementById('btnHost'); if(bH) bH.disabled=true; const rI=document.getElementById('roomCode'); if(rI) rI.value=id; }
-      else { netStatus('正在连接房间…'); const c=net.peer.connect(net.room,{reliable:true}); setupConn(c); }
+      else { net.retry=0; netStatus('正在连接房间…'); connectGuest(); }
     });
     net.peer.on('connection', (c) => { setupConn(c); netStatus('队友已加入！点"开始游戏"开始'); });
     net.peer.on('error', (e) => { netStatus('连接错误：'+(e.type||e.message)); });
@@ -944,7 +970,12 @@
     }
   }
 
-  function loop() { update(); render(); requestAnimationFrame(loop); }
+  function checkNetHealth() {
+    if (net.role !== 'guest' || !net.connected) return;
+    if (!net.started || state.over || !state.running) return;
+    if (Date.now() - net.lastSnap > 4000) netStatus('⚠ 连接似乎中断，请检查网络或重新加入');
+  }
+  function loop() { checkNetHealth(); update(); render(); requestAnimationFrame(loop); }
 
   // ---- 地图 / 皮肤 选择 UI ----
   function buildChips() {
@@ -996,14 +1027,19 @@
     });
     if (bH) bH.addEventListener('click', () => {
       initAudio();
-      if (net.role && net.peer) { netStatus('已创建/加入房间，请等待或开始'); return; }
+      if (net.role==='host' && net.connected) { netStatus('房主房间已就绪，点"开始游戏"开始'); return; }
+      if (net.peer && !net.connected) { try { net.peer.destroy(); } catch(e){} }
+      net.role=null; net.conn=null;
       setupNet('host');
     });
     if (bJ) bJ.addEventListener('click', () => {
       initAudio();
       const code = (rI.value||'').trim().toUpperCase();
       if (!code) { netStatus('请输入房间码'); return; }
-      net.room = code; setupNet('guest');
+      if (net.role==='guest' && net.connected) { netStatus('已连接，请等待房主开始'); return; }
+      if (net.peer && !net.connected) { try { net.peer.destroy(); } catch(e){} }
+      net.role=null; net.conn=null;
+      net.room = code; net.retry=0; setupNet('guest');
     });
   }
 

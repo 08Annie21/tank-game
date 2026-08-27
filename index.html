@@ -16,14 +16,9 @@
     justify-content: center;
     overflow: hidden;
   }
-  #wrap {
-    position: relative;
-    width: 880px;
-    max-width: 96vw;
-  }
+  #wrap { position: relative; width: 880px; max-width: 96vw; }
   #game {
-    display: block;
-    width: 100%;
+    display: block; width: 100%;
     border-radius: 12px;
     box-shadow: 0 0 0 2px #2a2f4a, 0 20px 60px rgba(0,0,0,.6);
     background: #11131f;
@@ -31,80 +26,44 @@
     touch-action: none;
   }
   #hud {
-    position: absolute;
-    top: 14px; left: 14px; right: 14px;
-    display: flex;
-    gap: 8px;
-    justify-content: space-between;
-    align-items: center;
-    pointer-events: none;
-    font-weight: 600;
-    text-shadow: 0 1px 3px rgba(0,0,0,.8);
+    position: absolute; top: 14px; left: 14px; right: 14px;
+    display: flex; gap: 8px; justify-content: space-between; align-items: center;
+    pointer-events: none; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,.8);
   }
   .pill {
-    background: rgba(20,24,40,.65);
-    border: 1px solid #2f3658;
-    padding: 6px 12px;
-    border-radius: 999px;
-    font-size: 14px;
-    backdrop-filter: blur(4px);
+    background: rgba(20,24,40,.65); border: 1px solid #2f3658;
+    padding: 6px 12px; border-radius: 999px; font-size: 14px; backdrop-filter: blur(4px);
   }
   .pill b { color: #7fffd4; }
   #overlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: rgba(8,10,18,.78);
-    backdrop-filter: blur(6px);
-    border-radius: 12px;
-    text-align: center;
-    padding: 24px;
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(8,10,18,.78); backdrop-filter: blur(6px);
+    border-radius: 12px; text-align: center; padding: 24px;
   }
   #overlay.hidden { display: none; }
   #overlay h1 {
-    font-size: 44px;
-    letter-spacing: 2px;
+    font-size: 44px; letter-spacing: 2px;
     background: linear-gradient(90deg,#7fffd4,#73c2ff,#c08cff);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    margin-bottom: 8px;
+    -webkit-background-clip: text; background-clip: text; color: transparent; margin-bottom: 8px;
   }
   #overlay p { color: #aab3d6; line-height: 1.7; margin-bottom: 6px; }
   #overlay .keys { margin: 14px 0; font-size: 14px; color: #8893bd; }
   #overlay .keys span {
-    display: inline-block;
-    background: #1b2036;
-    border: 1px solid #313862;
-    border-radius: 6px;
-    padding: 3px 9px;
-    margin: 3px;
-    color: #cdd6ff;
+    display: inline-block; background: #1b2036; border: 1px solid #313862;
+    border-radius: 6px; padding: 3px 9px; margin: 3px; color: #cdd6ff;
   }
   button#start {
-    margin-top: 16px;
-    font-size: 18px;
-    font-weight: 700;
-    color: #0d0f1a;
-    background: linear-gradient(90deg,#7fffd4,#73c2ff);
-    border: none;
-    padding: 12px 34px;
-    border-radius: 999px;
-    cursor: pointer;
+    margin-top: 16px; font-size: 18px; font-weight: 700; color: #0d0f1a;
+    background: linear-gradient(90deg,#7fffd4,#73c2ff); border: none;
+    padding: 12px 34px; border-radius: 999px; cursor: pointer;
     transition: transform .12s ease, box-shadow .12s ease;
     box-shadow: 0 8px 24px rgba(115,194,255,.35);
   }
   button#start:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(115,194,255,.5); }
   #tip {
-    position: absolute;
-    bottom: 12px; left: 0; right: 0;
-    text-align: center;
-    font-size: 12px;
-    color: #5b6390;
-    pointer-events: none;
+    position: absolute; bottom: 12px; left: 0; right: 0; text-align: center;
+    font-size: 12px; color: #5b6390; pointer-events: none;
   }
 </style>
 </head>
@@ -115,20 +74,21 @@
     <div class="pill">❤ 血量 <b id="hp">100</b></div>
     <div class="pill">👾 波次 <b id="wave">1</b></div>
     <div class="pill">⭐ 分数 <b id="score">0</b></div>
+    <div class="pill">💠 积分 <b id="coins">0</b></div>
   </div>
   <div id="overlay">
     <h1>坦克大战</h1>
     <p>控制你的坦克，消灭所有敌方坦克，守住阵地！</p>
     <div class="keys">
       <span>W A S D / 方向键 移动</span>
-      <span>自动瞄准 + 自动开火</span>
-      <span>空格 手动开火</span>
-      <span>P 暂停</span>
+      <span>1 2 3 选技能</span>
+      <span>F 释放技能（消耗积分）</span>
+      <span>P 暂停 · M 静音</span>
     </div>
-    <p style="font-size:13px;color:#6f78a8;">击毁坦克有概率掉落 buff：治疗 / 多发子弹 / 队友支援。</p>
+    <p style="font-size:13px;color:#6f78a8;">每清空一波会掉落 buff（治疗 / 多发子弹 / 队友）；击杀赚取积分，用 F 放技能。</p>
     <button id="start">开始游戏</button>
   </div>
-  <div id="tip">提示：自动锁定最近的敌人开火，开过去捡 buff 球获得增益；贴着掩体可挡子弹。</div>
+  <div id="tip">提示：自动锁定最近的敌人开火；清空一波后开过去捡 buff；积分用来放激光/导弹/剑气。</div>
 </div>
 
 <script>
@@ -140,6 +100,7 @@
   const hpEl = document.getElementById('hp');
   const waveEl = document.getElementById('wave');
   const scoreEl = document.getElementById('score');
+  const coinsEl = document.getElementById('coins');
   const overlay = document.getElementById('overlay');
   const startBtn = document.getElementById('start');
 
@@ -147,8 +108,17 @@
   const keys = {};
   addEventListener('keydown', e => {
     if ([' ','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
-    keys[e.key.toLowerCase()] = true;
-    if (e.key.toLowerCase() === 'p' && state.running) togglePause();
+    const k = e.key.toLowerCase();
+    keys[k] = true;
+    if (e.repeat) return;                       // 动作键只在「首次按下」触发
+    if (k === 'p' && state.running) togglePause();
+    else if (k === 'm') toggleMute();
+    else if (state.running && !state.paused) {
+      if (k === 'f') activateSkill();
+      else if (k === '1') selectSkill(0);
+      else if (k === '2') selectSkill(1);
+      else if (k === '3') selectSkill(2);
+    }
   });
   addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 
@@ -157,48 +127,84 @@
   const dist = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
+  // ---- 音效（Web Audio 程序化生成，无需外部文件）----
+  let audioCtx = null;
+  function initAudio() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) { /* 忽略 */ }
+  }
+  function tone(freq, dur, type='square', vol=0.06, slideTo=null) {
+    if (!audioCtx || state.muted) return;
+    const t = audioCtx.currentTime;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t + dur);
+  }
+  function noise(dur, vol=0.12) {
+    if (!audioCtx || state.muted) return;
+    const t = audioCtx.currentTime, n = Math.floor(audioCtx.sampleRate * dur);
+    const buf = audioCtx.createBuffer(1, n, audioCtx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random()*2 - 1) * (1 - i/n);
+    const src = audioCtx.createBufferSource(); src.buffer = buf;
+    const g = audioCtx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    const f = audioCtx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1300;
+    src.connect(f).connect(g).connect(audioCtx.destination); src.start(t); src.stop(t + dur);
+  }
+  function playSound(name) {
+    if (!audioCtx || state.muted) return;
+    switch (name) {
+      case 'shoot':    tone(720, 0.05, 'square', 0.04, 520); break;
+      case 'explode':  noise(0.22, 0.12); break;
+      case 'hit':      tone(150, 0.18, 'sawtooth', 0.08, 80); break;
+      case 'buff':     tone(520, 0.09, 'triangle', 0.07, 780); setTimeout(() => tone(780, 0.10, 'triangle', 0.07, 1040), 90); break;
+      case 'laser':    tone(900, 0.18, 'sawtooth', 0.06, 300); break;
+      case 'launch':   tone(300, 0.18, 'square', 0.05, 700); break;
+      case 'sword':    tone(600, 0.12, 'triangle', 0.06, 1200); setTimeout(() => tone(900, 0.12, 'triangle', 0.06, 1500), 80); break;
+      case 'waveclear':tone(660, 0.12, 'triangle', 0.06, 990); setTimeout(() => tone(990, 0.16, 'triangle', 0.06, 1320), 120); break;
+      case 'deny':     tone(200, 0.10, 'square', 0.04, 160); break;
+    }
+  }
+
   // ---- 障碍物布局 ----
-  // 类型: 'wall' (可被子弹摧毁) / 'steel' (不可摧毁)
   let obstacles = [];
   function buildObstacles() {
     obstacles = [];
     const blocks = [
-      [140, 120, 200, 26, 'steel'],
-      [540, 120, 200, 26, 'steel'],
-      [140, 470, 200, 26, 'steel'],
-      [540, 470, 200, 26, 'steel'],
-      [400, 240, 26, 140, 'wall'],
-      [260, 300, 26, 140, 'wall'],
-      [594, 300, 26, 140, 'wall'],
-      [300, 90, 26, 120, 'wall'],
-      [554, 90, 26, 120, 'wall'],
-      [300, 410, 26, 120, 'wall'],
+      [140, 120, 200, 26, 'steel'], [540, 120, 200, 26, 'steel'],
+      [140, 470, 200, 26, 'steel'], [540, 470, 200, 26, 'steel'],
+      [400, 240, 26, 140, 'wall'],  [260, 300, 26, 140, 'wall'],
+      [594, 300, 26, 140, 'wall'],  [300, 90, 26, 120, 'wall'],
+      [554, 90, 26, 120, 'wall'],   [300, 410, 26, 120, 'wall'],
       [554, 410, 26, 120, 'wall'],
     ];
     for (const [x, y, w, h, t] of blocks) obstacles.push({ x, y, w, h, type: t, hp: t === 'wall' ? 3 : Infinity });
   }
-
-  function rectsOverlap(a, b) {
-    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-  }
+  function rectsOverlap(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
   function circleRect(cx, cy, r, rect) {
-    const nx = clamp(cx, rect.x, rect.x + rect.w);
-    const ny = clamp(cy, rect.y, rect.y + rect.h);
+    const nx = clamp(cx, rect.x, rect.x + rect.w), ny = clamp(cy, rect.y, rect.y + rect.h);
     return dist(cx, cy, nx, ny) < r;
   }
 
   // ---- 实体 ----
   const player = {
-    x: W/2, y: H - 70, r: 18, speed: 3.4,
+    x: W/2, y: H - 100, r: 18, speed: 3.4,
     angle: -Math.PI/2, hp: 100, maxHp: 100,
     cooldown: 0, multishot: 0, color: '#7fffd4',
   };
-  let bullets = [];
-  let enemies = [];
-  let teammates = [];
-  let buffs = [];
-  let particles = [];
-  let floaters = [];
+  let bullets = [], enemies = [], teammates = [], buffs = [], particles = [], floaters = [], missiles = [], effects = [];
+
+  // ---- 技能 ----
+  const SKILLS = [
+    { name: '激光', cost: 50, cd: 40, desc: '穿透光束' },
+    { name: '导弹', cost: 45, cd: 55, desc: '自动追踪' },
+    { name: '剑气', cost: 70, cd: 70, desc: '范围爆发' },
+  ];
+  let activeSkill = 0;
+  let skillCd = [0, 0, 0];
 
   function spawnEnemy() {
     const side = Math.floor(rand(0, 3));
@@ -206,30 +212,18 @@
     if (side === 0) { x = rand(40, W-40); y = -30; }
     else if (side === 1) { x = -30; y = rand(60, H-120); }
     else { x = W + 30; y = rand(60, H-120); }
-    enemies.push({
-      x, y, r: 17, speed: rand(1.1, 1.9),
-      angle: 0, hp: 3, maxHp: 3,
-      cooldown: rand(40, 120), color: '#ff7b7b',
-    });
+    enemies.push({ x, y, r: 17, speed: rand(1.1, 1.9), angle: 0, hp: 3, maxHp: 3, cooldown: rand(40, 120), color: '#ff7b7b' });
   }
 
   function fireBullet(obj, fromEnemy, angleOverride) {
     const a = angleOverride !== undefined ? angleOverride : obj.angle;
     const sp = 7.5;
-    bullets.push({
-      x: obj.x + Math.cos(a) * (obj.r + 4),
-      y: obj.y + Math.sin(a) * (obj.r + 4),
-      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-      r: 4, fromEnemy: !!fromEnemy, life: 120,
-    });
+    bullets.push({ x: obj.x + Math.cos(a) * (obj.r + 4), y: obj.y + Math.sin(a) * (obj.r + 4), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 4, fromEnemy: !!fromEnemy, life: 120 });
   }
-
   function firePlayer() {
-    if (player.multishot > 0) {
-      for (const off of [-0.2, 0, 0.2]) fireBullet(player, false, player.angle + off);
-    } else {
-      fireBullet(player, false);
-    }
+    playSound('shoot');
+    if (player.multishot > 0) { for (const off of [-0.2, 0, 0.2]) fireBullet(player, false, player.angle + off); }
+    else fireBullet(player, false);
   }
 
   function burst(x, y, color, n=14) {
@@ -238,66 +232,104 @@
       particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: rand(20, 40), color });
     }
   }
+  function buffColor(type) { return type === 'heal' ? '#7fffd4' : type === 'multishot' ? '#ffd27b' : '#9b8cff'; }
+  function buffIcon(type) { return type === 'heal' ? '+' : type === 'multishot' ? '⋙' : '♥'; }
+  function buffName(type) { return type === 'heal' ? '治疗' : type === 'multishot' ? '多发' : '队友'; }
+  function floatText(x, y, text, color) { floaters.push({ x, y, text, color, life: 50 }); }
 
-  function buffColor(type) {
-    return type === 'heal' ? '#7fffd4' : type === 'multishot' ? '#ffd27b' : '#9b8cff';
-  }
-  function buffIcon(type) {
-    return type === 'heal' ? '+' : type === 'multishot' ? '⋙' : '♥';
-  }
-  function floatText(x, y, text, color) {
-    floaters.push({ x, y, text, color, life: 50 });
-  }
-  function maybeDropBuff(x, y, force) {
-    if (force || Math.random() < 0.55) {
-      const types = ['heal', 'multishot', 'teammate'];
-      const type = types[Math.floor(Math.random() * types.length)];
-      buffs.push({ x, y, r: 16, type, pulse: 0, life: 900, label: buffName(type) });
-    }
-  }
-  function buffName(type) {
-    return type === 'heal' ? '治疗' : type === 'multishot' ? '多发' : '队友';
-  }
   function applyBuff(type) {
+    playSound('buff');
     if (type === 'heal') {
-      player.hp = Math.min(player.maxHp, player.hp + 35);
-      updateHUD();
+      player.hp = Math.min(player.maxHp, player.hp + 35); updateHUD();
       floatText(player.x, player.y - 34, '+35 HP', '#7fffd4');
     } else if (type === 'multishot') {
-      player.multishot = 720;
-      floatText(player.x, player.y - 34, '多发子弹!', '#ffd27b');
+      player.multishot = 720; floatText(player.x, player.y - 34, '多发子弹!', '#ffd27b');
     } else if (type === 'teammate') {
       if (teammates.length < 2) {
         teammates.push({ x: player.x - 36, y: player.y + 36, r: 16, angle: 0, hp: 30, maxHp: 30, cooldown: 0 });
         floatText(player.x, player.y - 34, '队友支援!', '#9b8cff');
-      } else {
-        player.hp = Math.min(player.maxHp, player.hp + 25); updateHUD();
-        floatText(player.x, player.y - 34, '+25 HP', '#7fffd4');
-      }
+      } else { player.hp = Math.min(player.maxHp, player.hp + 25); updateHUD(); floatText(player.x, player.y - 34, '+25 HP', '#7fffd4'); }
     }
   }
 
-  // ---- 游戏状态 ----
-  const state = { running: false, paused: false, over: false, win: false, wave: 1, score: 0, toSpawn: 0, spawnTimer: 0, killsThisWave: 0 };
+  // 统一扣血 + 击杀结算（子弹与技能共用，避免重复结算）
+  function hurtEnemy(e, dmg) {
+    if (e.dead) return;
+    e.hp -= dmg; burst(e.x, e.y, '#ffd27b', 8);
+    if (e.hp <= 0) {
+      e.dead = true; state.score += 10 * state.wave; state.coins += 20 * state.wave;
+      burst(e.x, e.y, '#ff7b7b', 18); playSound('explode'); updateHUD();
+    }
+  }
+
+  // ---- 技能释放 ----
+  function selectSkill(i) { activeSkill = i; floatText(player.x, player.y - 40, '技能: ' + SKILLS[i].name, '#9b8cff'); }
+  function activateSkill() {
+    const s = SKILLS[activeSkill];
+    if (skillCd[activeSkill] > 0) { floatText(player.x, player.y - 40, '技能冷却中', '#ff9b9b'); return; }
+    if (state.coins < s.cost) { floatText(player.x, player.y - 40, '积分不足', '#ff9b9b'); playSound('deny'); return; }
+    state.coins -= s.cost; skillCd[activeSkill] = s.cd; updateHUD();
+    if (activeSkill === 0) castLaser();
+    else if (activeSkill === 1) castMissile();
+    else castSword();
+  }
+  function castLaser() {
+    const ang = player.angle, len = 780;
+    for (const e of enemies) {
+      const rx = e.x - player.x, ry = e.y - player.y;
+      const proj = rx * Math.cos(ang) + ry * Math.sin(ang);
+      if (proj < 0 || proj > len) continue;
+      const perp = Math.abs(-rx * Math.sin(ang) + ry * Math.cos(ang));
+      if (perp < e.r + 7) hurtEnemy(e, 3);
+    }
+    effects.push({ type: 'laser', x: player.x, y: player.y, angle: ang, len, life: 10, color: '#7fffd4' });
+    playSound('laser');
+  }
+  function castMissile() {
+    missiles.push({ x: player.x + Math.cos(player.angle) * (player.r + 6), y: player.y + Math.sin(player.angle) * (player.r + 6), vx: Math.cos(player.angle) * 4, vy: Math.sin(player.angle) * 4, life: 180, turn: 0.09 });
+    playSound('launch');
+  }
+  function castSword() {
+    const R = 190;
+    for (const e of enemies) if (dist(player.x, player.y, e.x, e.y) < R + e.r) hurtEnemy(e, 2);
+    effects.push({ type: 'ring', x: player.x, y: player.y, r: 10, maxR: R, life: 18, color: '#9b8cff' });
+    playSound('sword');
+  }
+  function explode(x, y, r, dmg) {
+    for (const e of enemies) if (dist(x, y, e.x, e.y) < r + e.r) hurtEnemy(e, dmg);
+    burst(x, y, '#ff9b4b', 18); playSound('explode');
+  }
+
+  // ---- 状态 ----
+  const state = { running: false, paused: false, over: false, win: false, wave: 1, score: 0, coins: 0, toSpawn: 0, spawnTimer: 0, intermission: false, interTimer: 0, muted: false };
 
   function startGame() {
     buildObstacles();
-    player.x = W/2; player.y = H - 70; player.hp = player.maxHp;
+    player.x = W/2; player.y = H - 100; player.hp = player.maxHp;
     player.angle = -Math.PI/2; player.multishot = 0;
-    bullets = []; enemies = []; teammates = []; buffs = []; particles = []; floaters = [];
+    bullets = []; enemies = []; teammates = []; buffs = []; particles = []; floaters = []; missiles = []; effects = [];
+    skillCd = [0, 0, 0]; activeSkill = 0;
     state.running = true; state.paused = false; state.over = false; state.win = false;
-    state.wave = 1; state.score = 0;
+    state.wave = 1; state.score = 0; state.coins = 0; state.intermission = false; state.interTimer = 0;
     startWave(1);
     overlay.classList.add('hidden');
     updateHUD();
   }
 
   function startWave(n) {
-    state.wave = n;
-    state.toSpawn = 2 + n;
-    state.spawnTimer = 0;
-    state.killsThisWave = 0;
+    state.wave = n; state.toSpawn = 2 + n; state.spawnTimer = 0;
     updateHUD();
+  }
+
+  function spawnWaveBuffs(n) {
+    const types = ['heal', 'multishot', 'teammate'];
+    for (let i = 0; i < n; i++) {
+      const ang = rand(0, Math.PI*2), rad = rand(90, 150);
+      let bx = clamp(player.x + Math.cos(ang) * rad, 40, W - 40);
+      let by = clamp(player.y + Math.sin(ang) * rad, 40, H - 40);
+      const type = types[Math.floor(Math.random() * types.length)];
+      buffs.push({ x: bx, y: by, r: 16, type, pulse: 0, life: 9999, label: buffName(type) });
+    }
   }
 
   function gameOver(win) {
@@ -309,7 +341,6 @@
       : `你被击毁了。<br>分数 <b style="color:#7fffd4">${state.score}</b> · 到达第 <b style="color:#7fffd4">${state.wave}</b> 波`;
     startBtn.textContent = '再来一局';
   }
-
   function togglePause() {
     state.paused = !state.paused;
     if (state.paused) {
@@ -317,21 +348,20 @@
       overlay.querySelector('h1').textContent = '⏸ 已暂停';
       overlay.querySelector('p').textContent = '按 P 或点击下方按钮继续';
       startBtn.textContent = '继续';
-    } else {
-      overlay.classList.add('hidden');
-    }
+    } else overlay.classList.add('hidden');
   }
+  function toggleMute() { state.muted = !state.muted; floatText(player.x, player.y - 40, state.muted ? '已静音' : '声音开', '#cdd6ff'); }
 
   function updateHUD() {
     hpEl.textContent = Math.max(0, Math.round(player.hp));
     waveEl.textContent = state.wave;
     scoreEl.textContent = state.score;
+    coinsEl.textContent = state.coins;
   }
 
   // ---- 碰撞：障碍 + 边界（可贴墙滑动）----
   function slideMove(obj, nx, ny) {
-    let x = clamp(nx, obj.r, W - obj.r);
-    let y = clamp(ny, obj.r, H - obj.r);
+    let x = clamp(nx, obj.r, W - obj.r), y = clamp(ny, obj.r, H - obj.r);
     const boxX = { x: x - obj.r, y: obj.y - obj.r, w: obj.r*2, h: obj.r*2 };
     if (obstacles.some(o => rectsOverlap(boxX, o))) x = obj.x;
     const boxY = { x: x - obj.r, y: y - obj.r, w: obj.r*2, h: obj.r*2 };
@@ -342,10 +372,8 @@
     for (const o of obstacles) {
       const box = { x: obj.x - obj.r, y: obj.y - obj.r, w: obj.r*2, h: obj.r*2 };
       if (!rectsOverlap(box, o)) continue;
-      const left = (obj.x + obj.r) - o.x;
-      const right = (o.x + o.w) - (obj.x - obj.r);
-      const top = (obj.y + obj.r) - o.y;
-      const bottom = (o.y + o.h) - (obj.y - obj.r);
+      const left = (obj.x + obj.r) - o.x, right = (o.x + o.w) - (obj.x - obj.r);
+      const top = (obj.y + obj.r) - o.y, bottom = (o.y + o.h) - (obj.y - obj.r);
       const m = Math.min(left, right, top, bottom);
       if (m === left) obj.x = o.x - obj.r;
       else if (m === right) obj.x = o.x + o.w + obj.r;
@@ -359,7 +387,10 @@
   function update() {
     if (!state.running || state.paused) return;
 
-    // --- 玩家移动（简单：WASD / 方向键）---
+    // 技能冷却
+    for (let i = 0; i < skillCd.length; i++) if (skillCd[i] > 0) skillCd[i]--;
+
+    // --- 玩家移动（WASD / 方向键）---
     let dx = 0, dy = 0;
     if (keys['w'] || keys['arrowup']) dy -= 1;
     if (keys['s'] || keys['arrowdown']) dy += 1;
@@ -376,70 +407,58 @@
     if (target) player.angle = Math.atan2(target.y - player.y, target.x - player.x);
     if (player.multishot > 0) player.multishot--;
     player.cooldown--;
-    if (player.cooldown <= 0 && (target || keys[' '])) {
-      firePlayer();
-      player.cooldown = 16;
-    }
+    if (player.cooldown <= 0 && (target || keys[' '])) { firePlayer(); player.cooldown = 16; }
 
     // --- 敌人生成 ---
     if (state.toSpawn > 0) {
       state.spawnTimer--;
-      if (state.spawnTimer <= 0) {
-        spawnEnemy();
-        state.toSpawn--;
-        state.spawnTimer = 70;
-      }
+      if (state.spawnTimer <= 0) { spawnEnemy(); state.toSpawn--; state.spawnTimer = 70; }
     } else if (enemies.length === 0) {
       if (state.wave >= 8) { gameOver(true); return; }
-      startWave(state.wave + 1);
+      if (!state.intermission) {
+        state.intermission = true; state.interTimer = 240;   // 4 秒间歇
+        spawnWaveBuffs(2);
+        playSound('waveclear');
+        floatText(player.x, player.y - 44, '本波清空！捡取 buff', '#7fffd4');
+      }
+    }
+    if (state.intermission) {
+      state.interTimer--;
+      if (state.interTimer <= 0) { state.intermission = false; startWave(state.wave + 1); }
     }
 
-    // --- 敌人 AI：直奔玩家，保持间距，不重叠不卡墙 ---
+    // --- 敌人 AI ---
     const minDistToPlayer = 30;
     for (const e of enemies) {
       const ang = Math.atan2(player.y - e.y, player.x - e.x);
       const d = dist(e.x, e.y, player.x, player.y);
       let nx = e.x, ny = e.y;
-      if (d > e.r + player.r + minDistToPlayer) {
-        nx = e.x + Math.cos(ang) * e.speed;
-        ny = e.y + Math.sin(ang) * e.speed;
-      }
-      const mv = slideMove(e, nx, ny);
-      e.x = mv.x; e.y = mv.y;
-      e.angle = ang;
+      if (d > e.r + player.r + minDistToPlayer) { nx = e.x + Math.cos(ang) * e.speed; ny = e.y + Math.sin(ang) * e.speed; }
+      const mv = slideMove(e, nx, ny); e.x = mv.x; e.y = mv.y; e.angle = ang;
       e.cooldown--;
       if (e.cooldown <= 0 && d < 460) { fireBullet(e, true); e.cooldown = rand(70, 130); }
     }
-    // 敌人之间互相分离（避免叠在一起 / 地下转圈）
+    // 敌人互相分离
     for (let i = 0; i < enemies.length; i++) {
       for (let j = i + 1; j < enemies.length; j++) {
         const a = enemies[i], b = enemies[j];
-        const d = dist(a.x, a.y, b.x, b.y);
-        const min = a.r + b.r;
+        const d = dist(a.x, a.y, b.x, b.y), min = a.r + b.r;
         if (d > 0 && d < min) {
-          const push = (min - d) / 2;
-          const ux = (a.x - b.x) / d, uy = (a.y - b.y) / d;
-          a.x += ux * push; a.y += uy * push;
-          b.x -= ux * push; b.y -= uy * push;
+          const push = (min - d) / 2, ux = (a.x - b.x) / d, uy = (a.y - b.y) / d;
+          a.x += ux * push; a.y += uy * push; b.x -= ux * push; b.y -= uy * push;
         }
       }
     }
-    // 敌人不挤到玩家身上 + 修正卡墙
+    // 敌人不挤玩家 + 修正卡墙
     for (const e of enemies) {
-      const d = dist(e.x, e.y, player.x, player.y);
-      const min = e.r + player.r;
-      if (d > 0 && d < min) {
-        const push = min - d;
-        e.x += (e.x - player.x) / d * push;
-        e.y += (e.y - player.y) / d * push;
-      }
+      const d = dist(e.x, e.y, player.x, player.y), min = e.r + player.r;
+      if (d > 0 && d < min) { const push = min - d; e.x += (e.x - player.x) / d * push; e.y += (e.y - player.y) / d * push; }
       pushOutOfObstacles(e);
     }
 
-    // --- 队友 AI：跟随玩家、自动攻击最近敌人 ---
+    // --- 队友 AI ---
     for (const tm of teammates) {
-      const tx = player.x - Math.cos(player.angle) * 46;
-      const ty = player.y - Math.sin(player.angle) * 46;
+      const tx = player.x - Math.cos(player.angle) * 46, ty = player.y - Math.sin(player.angle) * 46;
       const d = dist(tm.x, tm.y, tx, ty);
       if (d > 8) {
         const a = Math.atan2(ty - tm.y, tx - tm.x);
@@ -463,21 +482,15 @@
       for (const o of obstacles) {
         if (circleRect(b.x, b.y, b.r, o)) {
           b.life = 0;
-          if (o.type === 'wall') {
-            o.hp--;
-            burst(b.x, b.y, '#c89b6b', 6);
-            if (o.hp <= 0) { o.dead = true; burst(o.x+o.w/2, o.y+o.h/2, '#c89b6b', 16); }
-          } else {
-            burst(b.x, b.y, '#9fb0d0', 8);
-          }
+          if (o.type === 'wall') { o.hp--; burst(b.x, b.y, '#c89b6b', 6); if (o.hp <= 0) { o.dead = true; burst(o.x+o.w/2, o.y+o.h/2, '#c89b6b', 16); } }
+          else burst(b.x, b.y, '#9fb0d0', 8);
           break;
         }
       }
       if (b.life <= 0) continue;
       if (b.fromEnemy) {
         if (dist(b.x, b.y, player.x, player.y) < player.r + b.r) {
-          player.hp -= 9; b.life = 0; burst(player.x, player.y, '#ff5b5b', 10);
-          updateHUD();
+          player.hp -= 9; b.life = 0; burst(player.x, player.y, '#ff5b5b', 10); playSound('hit'); updateHUD();
           if (player.hp <= 0) { gameOver(false); return; }
         } else {
           for (const tm of teammates) {
@@ -492,16 +505,7 @@
       } else {
         for (const e of enemies) {
           if (e.dead) continue;
-          if (dist(b.x, b.y, e.x, e.y) < e.r + b.r) {
-            e.hp -= 1; b.life = 0; burst(e.x, e.y, '#ffd27b', 10);
-            if (e.hp <= 0) {
-              e.dead = true; state.killsThisWave++; state.score += 10 * state.wave;
-              burst(e.x, e.y, '#ff7b7b', 18);
-              maybeDropBuff(e.x, e.y, state.killsThisWave === 1);
-              updateHUD();
-            }
-            break;
-          }
+          if (dist(b.x, b.y, e.x, e.y) < e.r + b.r) { b.life = 0; hurtEnemy(e, 1); break; }
         }
       }
     }
@@ -510,20 +514,36 @@
     enemies = enemies.filter(e => !e.dead);
     teammates = teammates.filter(t => !t.dead);
 
-    // --- buff 掉落物（靠近会被吸附）---
-    for (const bf of buffs) {
-      bf.pulse += 0.1; bf.life--;
-      const d = dist(bf.x, bf.y, player.x, player.y);
-      if (d < 160) {
-        bf.x += (player.x - bf.x) * 0.14;
-        bf.y += (player.y - bf.y) * 0.14;
+    // --- 导弹 ---
+    for (const m of missiles) {
+      m.life--;
+      let tgt = null, bd = 1e9;
+      for (const e of enemies) { const dd = dist(m.x, m.y, e.x, e.y); if (dd < bd) { bd = dd; tgt = e; } }
+      if (tgt) {
+        const a = Math.atan2(tgt.y - m.y, tgt.x - m.x), ca = Math.atan2(m.vy, m.vx);
+        let da = a - ca; while (da > Math.PI) da -= Math.PI*2; while (da < -Math.PI) da += Math.PI*2;
+        const na = ca + Math.max(-m.turn, Math.min(m.turn, da)), sp = Math.hypot(m.vx, m.vy);
+        m.vx = Math.cos(na) * sp; m.vy = Math.sin(na) * sp;
       }
-      if (d < player.r + bf.r) {
-        applyBuff(bf.type); bf.dead = true;
-        burst(bf.x, bf.y, buffColor(bf.type), 14);
-      }
+      m.x += m.vx; m.y += m.vy;
+      let hit = false;
+      for (const e of enemies) { if (dist(m.x, m.y, e.x, e.y) < e.r + 6) { hurtEnemy(e, 3); hit = true; break; } }
+      if (hit || m.life <= 0 || m.x < -20 || m.x > W+20 || m.y < -20 || m.y > H+20) { explode(m.x, m.y, 60, 2); m.dead = true; }
     }
-    buffs = buffs.filter(b => !b.dead && b.life > 0);
+    missiles = missiles.filter(m => !m.dead);
+
+    // --- buff 掉落物（靠近吸附）---
+    for (const bf of buffs) {
+      bf.pulse += 0.1;
+      const d = dist(bf.x, bf.y, player.x, player.y);
+      if (d < 160) { bf.x += (player.x - bf.x) * 0.14; bf.y += (player.y - bf.y) * 0.14; }
+      if (d < player.r + bf.r) { applyBuff(bf.type); bf.dead = true; burst(bf.x, bf.y, buffColor(bf.type), 14); }
+    }
+    buffs = buffs.filter(b => !b.dead);
+
+    // --- 特效 ---
+    for (const ef of effects) { ef.life--; if (ef.type === 'ring') ef.r += (ef.maxR - ef.r) * 0.25; }
+    effects = effects.filter(e => e.life > 0);
 
     // --- 粒子 / 飘字 ---
     for (const p of particles) { p.x += p.vx; p.y += p.vy; p.life--; p.vx *= 0.94; p.vy *= 0.94; }
@@ -538,62 +558,42 @@
     if (kind === 'player') { body = t.color; turret = '#36c9a6'; dome = '#d7fff4'; }
     else if (kind === 'ally') { body = '#9b8cff'; turret = '#6c5bd6'; dome = '#e6e0ff'; }
     else { body = '#3a2230'; turret = '#ff5b5b'; dome = '#ffd7d7'; }
-    ctx.save();
-    ctx.translate(t.x, t.y);
-    ctx.rotate(t.angle);
+    ctx.save(); ctx.translate(t.x, t.y); ctx.rotate(t.angle);
     ctx.fillStyle = '#1b2036';
-    ctx.fillRect(-t.r, -t.r-4, t.r*2, 6);
-    ctx.fillRect(-t.r, t.r-2, t.r*2, 6);
-    ctx.fillStyle = body;
-    ctx.beginPath(); ctx.arc(0, 0, t.r, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = turret;
-    ctx.fillRect(0, -5, t.r + 14, 10);
-    ctx.beginPath(); ctx.arc(0, 0, t.r*0.45, 0, Math.PI*2);
-    ctx.fillStyle = dome; ctx.fill();
+    ctx.fillRect(-t.r, -t.r-4, t.r*2, 6); ctx.fillRect(-t.r, t.r-2, t.r*2, 6);
+    ctx.fillStyle = body; ctx.beginPath(); ctx.arc(0, 0, t.r, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = turret; ctx.fillRect(0, -5, t.r + 14, 10);
+    ctx.beginPath(); ctx.arc(0, 0, t.r*0.45, 0, Math.PI*2); ctx.fillStyle = dome; ctx.fill();
     ctx.restore();
   }
 
   function render() {
-    ctx.fillStyle = '#11131f';
-    ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = 'rgba(255,255,255,.03)';
-    ctx.lineWidth = 1;
+    ctx.fillStyle = '#11131f'; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(255,255,255,.03)'; ctx.lineWidth = 1;
     for (let x = 0; x <= W; x += 40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
     for (let y = 0; y <= H; y += 40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
 
     // 障碍物
     for (const o of obstacles) {
       if (o.type === 'steel') {
-        ctx.fillStyle = '#44507a';
-        ctx.fillRect(o.x, o.y, o.w, o.h);
-        ctx.strokeStyle = '#6c7bb0'; ctx.lineWidth = 2;
-        ctx.strokeRect(o.x+2, o.y+2, o.w-4, o.h-4);
+        ctx.fillStyle = '#44507a'; ctx.fillRect(o.x, o.y, o.w, o.h);
+        ctx.strokeStyle = '#6c7bb0'; ctx.lineWidth = 2; ctx.strokeRect(o.x+2, o.y+2, o.w-4, o.h-4);
       } else {
         const dmg = o.hp <= 1 ? '#8a6a44' : (o.hp === 2 ? '#a9824f' : '#c89b6b');
-        ctx.fillStyle = dmg;
-        ctx.fillRect(o.x, o.y, o.w, o.h);
+        ctx.fillStyle = dmg; ctx.fillRect(o.x, o.y, o.w, o.h);
         ctx.strokeStyle = '#5e4628'; ctx.lineWidth = 2;
         for (let i = o.x; i < o.x + o.w; i += 14) { ctx.beginPath(); ctx.moveTo(i, o.y); ctx.lineTo(i, o.y+o.h); ctx.stroke(); }
       }
     }
 
-    // buff 掉落物（带名称标签，更显眼）
+    // buff 掉落物
     for (const bf of buffs) {
-      const col = buffColor(bf.type);
-      const pr = bf.r + Math.sin(bf.pulse) * 2.5;
-      ctx.globalAlpha = bf.life < 120 ? Math.max(0.25, bf.life/120) : 1;
-      ctx.shadowColor = col; ctx.shadowBlur = 16;
-      ctx.fillStyle = col;
-      ctx.beginPath(); ctx.arc(bf.x, bf.y, pr, 0, Math.PI*2); ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = '#0d0f1a';
-      ctx.font = 'bold 15px sans-serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const col = buffColor(bf.type), pr = bf.r + Math.sin(bf.pulse) * 2.5;
+      ctx.shadowColor = col; ctx.shadowBlur = 16; ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(bf.x, bf.y, pr, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
+      ctx.fillStyle = '#0d0f1a'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(buffIcon(bf.type), bf.x, bf.y + 1);
-      ctx.fillStyle = col;
-      ctx.font = 'bold 11px sans-serif';
-      ctx.fillText(bf.label || buffName(bf.type), bf.x, bf.y - pr - 8);
-      ctx.globalAlpha = 1;
+      ctx.fillStyle = col; ctx.font = 'bold 11px sans-serif'; ctx.fillText(bf.label || buffName(bf.type), bf.x, bf.y - pr - 8);
     }
 
     // 队友
@@ -606,20 +606,35 @@
     }
 
     // 粒子
-    for (const p of particles) {
-      ctx.globalAlpha = clamp(p.life / 40, 0, 1);
-      ctx.fillStyle = p.color;
-      ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill();
-    }
+    for (const p of particles) { ctx.globalAlpha = clamp(p.life / 40, 0, 1); ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill(); }
     ctx.globalAlpha = 1;
 
     // 子弹
     for (const b of bullets) {
       ctx.fillStyle = b.fromEnemy ? '#ff6b6b' : '#9bffea';
-      ctx.shadowColor = b.fromEnemy ? '#ff6b6b' : '#9bffea';
-      ctx.shadowBlur = 8;
-      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI*2); ctx.fill();
-      ctx.shadowBlur = 0;
+      ctx.shadowColor = b.fromEnemy ? '#ff6b6b' : '#9bffea'; ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
+    }
+
+    // 导弹
+    for (const m of missiles) {
+      ctx.fillStyle = '#ff9b4b'; ctx.shadowColor = '#ff9b4b'; ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.arc(m.x, m.y, 5, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
+    }
+
+    // 技能特效（激光 / 剑气环）
+    for (const ef of effects) {
+      if (ef.type === 'laser') {
+        ctx.globalAlpha = ef.life / 10; ctx.strokeStyle = ef.color; ctx.lineWidth = 8;
+        ctx.shadowColor = ef.color; ctx.shadowBlur = 16;
+        ctx.beginPath(); ctx.moveTo(ef.x, ef.y); ctx.lineTo(ef.x + Math.cos(ef.angle)*ef.len, ef.y + Math.sin(ef.angle)*ef.len); ctx.stroke();
+        ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+      } else if (ef.type === 'ring') {
+        ctx.globalAlpha = ef.life / 18; ctx.strokeStyle = ef.color; ctx.lineWidth = 4;
+        ctx.shadowColor = ef.color; ctx.shadowBlur = 12;
+        ctx.beginPath(); ctx.arc(ef.x, ef.y, ef.r, 0, Math.PI*2); ctx.stroke();
+        ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+      }
     }
 
     // 敌人
@@ -627,36 +642,50 @@
     // 玩家
     if (!state.over) drawTank(player, 'player');
 
-    // 玩家血条 + 增益状态
+    // 玩家血条 + 增益
     if (!state.over) {
       const bw = 40, bx = player.x - bw/2, by = player.y - player.r - 16;
       ctx.fillStyle = '#000'; ctx.fillRect(bx-1, by-1, bw+2, 6);
       ctx.fillStyle = '#ff5b5b'; ctx.fillRect(bx, by, bw, 4);
       ctx.fillStyle = '#7fffd4'; ctx.fillRect(bx, by, bw * clamp(player.hp/player.maxHp,0,1), 4);
       if (player.multishot > 0) {
-        ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-        ctx.fillStyle = '#ffd27b';
+        ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillStyle = '#ffd27b';
         ctx.fillText('⚡多发 ' + Math.ceil(player.multishot/60) + 's', player.x, by - 4);
       }
     }
 
-    // 飘字提示
+    // 技能栏（底部）
+    if (!state.over) {
+      const skW = 84, skH = 32, gap = 8;
+      const total = SKILLS.length * skW + (SKILLS.length - 1) * gap;
+      const sx = W/2 - total/2, sy = H - 56;
+      for (let i = 0; i < SKILLS.length; i++) {
+        const s = SKILLS[i], x = sx + i * (skW + gap);
+        ctx.fillStyle = i === activeSkill ? 'rgba(123,255,212,.18)' : 'rgba(20,24,40,.7)';
+        ctx.fillRect(x, sy, skW, skH);
+        ctx.strokeStyle = i === activeSkill ? '#7fffd4' : '#313862'; ctx.lineWidth = 2; ctx.strokeRect(x, sy, skW, skH);
+        ctx.fillStyle = i === activeSkill ? '#7fffd4' : '#cdd6ff';
+        ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText((i+1) + ' ' + s.name, x + skW/2, sy + 12);
+        ctx.fillStyle = '#9aa3cc'; ctx.font = '10px sans-serif';
+        ctx.fillText(skillCd[i] > 0 ? '冷却' + Math.ceil(skillCd[i]/60) + 's' : (s.cost + '分'), x + skW/2, sy + 25);
+      }
+      ctx.fillStyle = '#5b6390'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('F 释放', sx + total/2, sy - 6);
+    }
+
+    // 飘字
     for (const f of floaters) {
       ctx.globalAlpha = clamp(f.life / 50, 0, 1);
-      ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = f.color;
-      ctx.fillText(f.text, f.x, f.y);
-      ctx.globalAlpha = 1;
+      ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, f.y); ctx.globalAlpha = 1;
     }
   }
 
-  function loop() {
-    update();
-    render();
-    requestAnimationFrame(loop);
-  }
+  function loop() { update(); render(); requestAnimationFrame(loop); }
 
   startBtn.addEventListener('click', () => {
+    initAudio();
     if (state.paused) { togglePause(); return; }
     startGame();
   });

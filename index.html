@@ -43,6 +43,15 @@
   button#start { margin-top: 18px; font-size: 18px; font-weight: 700; color: #0d0f1a; background: linear-gradient(90deg,#7fffd4,#73c2ff); border: none; padding: 12px 34px; border-radius: 999px; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; box-shadow: 0 8px 24px rgba(115,194,255,.35); }
   button#start:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(115,194,255,.5); }
   #tip { position: absolute; bottom: 12px; left: 0; right: 0; text-align: center; font-size: 12px; color: #5b6390; pointer-events: none; }
+  .mp-line { width: 100%; max-width: 460px; border-top: 1px dashed #2f3658; margin: 14px 0 6px; }
+  .mp-title { color: #7fffd4; font-size: 13px; font-weight: 700; letter-spacing: 1px; margin: 2px 0; }
+  input#roomCode { background:#11131f; border:1px solid #313862; color:#e8ecff; border-radius:8px; padding:8px 12px; font-size:14px; width:170px; text-align:center; letter-spacing:2px; text-transform:uppercase; }
+  input#roomCode:focus { outline:none; border-color:#7fffd4; }
+  #netStatus { color:#8893bd; font-size:12px; min-height:16px; margin-top:6px; word-break:break-all; }
+  .row.inline { display:flex; gap:8px; justify-content:center; align-items:center; flex-wrap:wrap; }
+  button.mini { font-size:14px; font-weight:700; color:#0d0f1a; background:linear-gradient(90deg,#73c2ff,#c08cff); border:none; padding:9px 18px; border-radius:999px; cursor:pointer; }
+  button.mini:hover { transform:translateY(-1px); }
+  button.mini:disabled { opacity:.5; cursor:not-allowed; transform:none; }
 </style>
 </head>
 <body>
@@ -72,11 +81,27 @@
       <span>P 暂停 · M 静音</span>
     </div>
     <p style="font-size:12px;color:#6f78a8;">共 12 波，第 4、8、12 波出现 BOSS；清空一波捡 buff（含"弹射"可让子弹反弹）；皮肤"丛林/沙漠/霓虹/烈焰"使用 AI 生成的坦克贴图。</p>
-    <button id="start">开始游戏</button>
+    <button id="start">开始游戏（单人）</button>
+    <div class="mp-line"></div>
+    <div class="mp-title">🌐 联机（分享房间码即可，无需开服务器）</div>
+    <div class="row">
+      <div class="label">模式</div>
+      <div class="chips" id="modeChips">
+        <button class="chip active" data-mode="coop">合作闯关</button>
+        <button class="chip" data-mode="pvp">对战 PK</button>
+      </div>
+    </div>
+    <div class="row inline">
+      <button class="mini" id="btnHost">创建房间</button>
+      <input id="roomCode" placeholder="房间码" maxlength="20" />
+      <button class="mini" id="btnJoin">加入房间</button>
+    </div>
+    <div id="netStatus"></div>
   </div>
   <div id="tip">提示：先选地图与皮肤，按"开始游戏"进入战场。第 4、8 波 BOSS 用技能集火！</div>
 </div>
 
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
 (() => {
   const canvas = document.getElementById('game');
@@ -148,11 +173,11 @@
     if (e.repeat) return;
     if (k === 'p' && state.running) togglePause();
     else if (k === 'm') toggleMute();
-    else if (state.running && !state.paused) {
-      if (k === 'f') activateSkill();
-      else if (k === '1') selectSkill(0);
-      else if (k === '2') selectSkill(1);
-      else if (k === '3') selectSkill(2);
+    else if (state.running && !state.paused && net.role !== 'guest') {
+      if (k === 'f') activateSkill(player);
+      else if (k === '1') selectSkill(player,0);
+      else if (k === '2') selectSkill(player,1);
+      else if (k === '3') selectSkill(player,2);
     }
   });
   addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
@@ -222,14 +247,40 @@
   const player = {
     x: W/2, y: H - 100, r: 18, speed: 3.4,
     angle: -Math.PI/2, hp: 100, maxHp: 100,
-    cooldown: 0, multishot: 0, ricochet: 0,
+    cooldown: 0, multishot: 0, ricochet: 0, skillCd:[0,0,0], activeSkill:0, dead:false,
   };
+  let player2 = null; // 联机时第二个坦克（host 端由远端输入驱动，guest 端由快照填充）
   let bullets = [], enemies = [], teammates = [], buffs = [], particles = [], floaters = [], missiles = [], effects = [];
+
+  function makeTank(isRemote) {
+    return {
+      x: W/2, y: isRemote ? 120 : H-100, r: 18, speed: 3.4,
+      angle: isRemote ? Math.PI/2 : -Math.PI/2, hp: 100, maxHp: 100,
+      cooldown: 0, multishot: 0, ricochet: 0, skillCd:[0,0,0], activeSkill:0, dead:false,
+    };
+  }
+  function copyTank(t, s) {
+    t.x=s.x; t.y=s.y; t.angle=s.angle; t.hp=s.hp; t.maxHp=s.maxHp;
+    t.cooldown=s.cooldown; t.multishot=s.multishot; t.ricochet=s.ricochet;
+    t.dead=!!s.dead; t.skillCd=s.skillCd||[0,0,0]; t.activeSkill=s.activeSkill||0;
+  }
+  function tankState(t) {
+    return { x:t.x, y:t.y, angle:t.angle, hp:t.hp, maxHp:t.maxHp, cooldown:t.cooldown,
+      multishot:t.multishot, ricochet:t.ricochet, dead:!!t.dead, skillCd:t.skillCd, activeSkill:t.activeSkill };
+  }
+
+  // ---- 联机状态 ----
+  const net = {
+    mode: 'coop', role: null, peer: null, conn: null, connected: false,
+    started: false, pendingStart: false, room: '', lastWin: false,
+    remoteInput: { up:false, down:false, left:false, right:false, fire:false, skill:false, skillIdx:0, prevSkill:false },
+    snapTick: 0, inTick: 0,
+  };
+  function netStatus(s){ const el=document.getElementById('netStatus'); if(el) el.textContent=s; }
 
   const SKILLS = [
     { name: '激光', cost: 50, cd: 40 }, { name: '导弹', cost: 45, cd: 55 }, { name: '剑气', cost: 70, cd: 70 },
   ];
-  let activeSkill = 0, skillCd = [0, 0, 0];
 
   function spawnEnemy() {
     const side = Math.floor(rand(0, 3)); let x, y;
@@ -250,9 +301,15 @@
     spawnEnemy(); spawnEnemy();
     floatText(player.x, player.y - 50, '⚠ BOSS 来袭!', '#ff5b5b');
   }
+  function nearTank(x, y) {
+    let t = player, best = dist(x, y, player.x, player.y);
+    if (player2) { const d = dist(x, y, player2.x, player2.y); if (d < best) { best = d; t = player2; } }
+    return t;
+  }
   function updateBoss(e) {
-    const ang = Math.atan2(player.y - e.y, player.x - e.x);
-    const d = dist(e.x, e.y, player.x, player.y), want = 170;
+    const tk = nearTank(e.x, e.y);
+    const ang = Math.atan2(tk.y - e.y, tk.x - e.x);
+    const d = dist(e.x, e.y, tk.x, tk.y), want = 170;
     if (d > want + 25) { e.x += Math.cos(ang) * e.speed; e.y += Math.sin(ang) * e.speed; }
     else if (d < want - 25) { e.x -= Math.cos(ang) * e.speed; e.y -= Math.sin(ang) * e.speed; }
     e.angle = ang; pushOutOfObstacles(e);
@@ -273,12 +330,12 @@
 
   function fireBullet(obj, fromEnemy, angleOverride, dmg) {
     const a = angleOverride !== undefined ? angleOverride : obj.angle, sp = 7.5;
-    bullets.push({ x: obj.x + Math.cos(a) * (obj.r+4), y: obj.y + Math.sin(a) * (obj.r+4), vx: Math.cos(a)*sp, vy: Math.sin(a)*sp, r:4, fromEnemy:!!fromEnemy, dmg: dmg||9, life:120 });
+    bullets.push({ x: obj.x + Math.cos(a) * (obj.r+4), y: obj.y + Math.sin(a) * (obj.r+4), vx: Math.cos(a)*sp, vy: Math.sin(a)*sp, r:4, fromEnemy:!!fromEnemy, owner: fromEnemy ? 'e' : (obj===player2 ? 'p2' : 'p1'), dmg: dmg||9, life:120 });
   }
-  function firePlayer() {
+  function firePlayer(tank) {
     playSound('shoot');
-    if (player.multishot > 0) { for (const off of [-0.2, 0, 0.2]) fireBullet(player, false, player.angle + off); }
-    else fireBullet(player, false);
+    if (tank.multishot > 0) { for (const off of [-0.2, 0, 0.2]) fireBullet(tank, false, tank.angle + off); }
+    else fireBullet(tank, false);
   }
   function burst(x, y, color, n=14) {
     for (let i=0;i<n;i++) { const a=rand(0, Math.PI*2), s=rand(1,4); particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:rand(20,40),color}); }
@@ -287,49 +344,49 @@
   function buffIcon(t) { return t==='heal'?'+': t==='multishot'?'⋙': t==='teammate'?'♥':'↻'; }
   function buffName(t) { return t==='heal'?'治疗': t==='multishot'?'多发': t==='teammate'?'队友':'弹射'; }
   function floatText(x,y,text,color) { floaters.push({x,y,text,color,life:50}); }
-  function applyBuff(type) {
+  function applyBuff(tank, type) {
     playSound('buff');
-    if (type==='heal') { player.hp = Math.min(player.maxHp, player.hp+35); updateHUD(); floatText(player.x,player.y-34,'+35 HP','#7fffd4'); }
-    else if (type==='multishot') { player.multishot = 720; floatText(player.x,player.y-34,'多发子弹!','#ffd27b'); }
+    if (type==='heal') { tank.hp = Math.min(tank.maxHp, tank.hp+35); updateHUD(); floatText(tank.x,tank.y-34,'+35 HP','#7fffd4'); }
+    else if (type==='multishot') { tank.multishot = 720; floatText(tank.x,tank.y-34,'多发子弹!','#ffd27b'); }
     else if (type==='teammate') {
-      if (teammates.length < 2) { teammates.push({ x:player.x-36, y:player.y+36, r:16, angle:0, hp:30, maxHp:30, cooldown:0 }); floatText(player.x,player.y-34,'队友支援!','#9b8cff'); }
-      else { player.hp = Math.min(player.maxHp, player.hp+25); updateHUD(); floatText(player.x,player.y-34,'+25 HP','#7fffd4'); }
+      if (teammates.length < 2) { teammates.push({ x:tank.x-36, y:tank.y+36, r:16, angle:0, hp:30, maxHp:30, cooldown:0 }); floatText(tank.x,tank.y-34,'队友支援!','#9b8cff'); }
+      else { tank.hp = Math.min(tank.maxHp, tank.hp+25); updateHUD(); floatText(tank.x,tank.y-34,'+25 HP','#7fffd4'); }
     }
-    else if (type==='ricochet') { player.ricochet = 900; floatText(player.x,player.y-34,'弹射子弹!','#5be0ff'); }
+    else if (type==='ricochet') { tank.ricochet = 900; floatText(tank.x,tank.y-34,'弹射子弹!','#5be0ff'); }
   }
   function hurtEnemy(e, dmg) {
     if (e.dead) return;
     e.hp -= dmg; burst(e.x, e.y, '#ffd27b', 8);
     if (e.hp <= 0) { e.dead = true; state.score += 10*state.wave; state.coins += 20*state.wave; burst(e.x,e.y,'#ff7b7b',18); playSound('kill'); updateHUD(); if (e.boss) onBossDeath(e); }
   }
-  function selectSkill(i) { activeSkill=i; floatText(player.x, player.y-40, '技能: '+SKILLS[i].name, '#9b8cff'); }
-  function activateSkill() {
-    const s = SKILLS[activeSkill];
-    if (skillCd[activeSkill]>0) { floatText(player.x,player.y-40,'技能冷却中','#ff9b9b'); return; }
-    if (state.coins < s.cost) { floatText(player.x,player.y-40,'积分不足','#ff9b9b'); playSound('deny'); return; }
-    state.coins -= s.cost; skillCd[activeSkill] = s.cd; updateHUD();
-    if (activeSkill===0) castLaser(); else if (activeSkill===1) castMissile(); else castSword();
+  function selectSkill(tank, i) { tank.activeSkill=i; floatText(tank.x, tank.y-40, '技能: '+SKILLS[i].name, '#9b8cff'); }
+  function activateSkill(tank) {
+    const s = SKILLS[tank.activeSkill];
+    if (tank.skillCd[tank.activeSkill]>0) { floatText(tank.x,tank.y-40,'技能冷却中','#ff9b9b'); return; }
+    if (state.coins < s.cost) { floatText(tank.x,tank.y-40,'积分不足','#ff9b9b'); playSound('deny'); return; }
+    state.coins -= s.cost; tank.skillCd[tank.activeSkill] = s.cd; updateHUD();
+    if (tank.activeSkill===0) castLaser(tank); else if (tank.activeSkill===1) castMissile(tank); else castSword(tank);
   }
-  function castLaser() {
-    const ang = player.angle, len = 780;
+  function castLaser(tank) {
+    const ang = tank.angle, len = 780;
     for (const e of enemies) {
-      const rx = e.x-player.x, ry = e.y-player.y;
+      const rx = e.x-tank.x, ry = e.y-tank.y;
       const proj = rx*Math.cos(ang)+ry*Math.sin(ang);
       if (proj<0||proj>len) continue;
       const perp = Math.abs(-rx*Math.sin(ang)+ry*Math.cos(ang));
       if (perp < e.r+7) hurtEnemy(e, 3);
     }
-    effects.push({ type:'laser', x:player.x, y:player.y, angle:ang, len, life:10, color:'#7fffd4' });
+    effects.push({ type:'laser', x:tank.x, y:tank.y, angle:ang, len, life:10, color:'#7fffd4' });
     playSound('laser');
   }
-  function castMissile() {
-    missiles.push({ x:player.x+Math.cos(player.angle)*(player.r+6), y:player.y+Math.sin(player.angle)*(player.r+6), vx:Math.cos(player.angle)*4, vy:Math.sin(player.angle)*4, life:180, turn:0.09 });
+  function castMissile(tank) {
+    missiles.push({ x:tank.x+Math.cos(tank.angle)*(tank.r+6), y:tank.y+Math.sin(tank.angle)*(tank.r+6), vx:Math.cos(tank.angle)*4, vy:Math.sin(tank.angle)*4, life:180, turn:0.09 });
     playSound('launch');
   }
-  function castSword() {
+  function castSword(tank) {
     const R = 190;
-    for (const e of enemies) if (dist(player.x,player.y,e.x,e.y)<R+e.r) hurtEnemy(e,2);
-    effects.push({ type:'ring', x:player.x, y:player.y, r:10, maxR:R, life:18, color:'#9b8cff' });
+    for (const e of enemies) if (dist(tank.x,tank.y,e.x,e.y)<R+e.r) hurtEnemy(e,2);
+    effects.push({ type:'ring', x:tank.x, y:tank.y, r:10, maxR:R, life:18, color:'#9b8cff' });
     playSound('sword');
   }
   function explode(x,y,r,dmg) {
@@ -342,12 +399,25 @@
 
   function startGame() {
     buildObstacles();
+    const isMP = net.role !== null;
     player.x = W/2; player.y = H-100; player.hp = player.maxHp;
-    player.angle = -Math.PI/2; player.multishot = 0; player.ricochet = 0;
+    player.angle = -Math.PI/2; player.multishot = 0; player.ricochet = 0; player.dead=false;
+    player.skillCd=[0,0,0]; player.activeSkill=0;
+    if (isMP) {
+      if (!player2) player2 = makeTank(true);
+      player2.x = W/2; player2.y = 120; player2.hp = player2.maxHp;
+      player2.angle = Math.PI/2; player2.multishot = 0; player2.ricochet = 0; player2.dead=false;
+      player2.skillCd=[0,0,0]; player2.activeSkill=0;
+    } else player2 = null;
     bullets=[]; enemies=[]; teammates=[]; buffs=[]; particles=[]; floaters=[]; missiles=[]; effects=[];
-    skillCd=[0,0,0]; activeSkill=0;
     state.running=true; state.paused=false; state.over=false; state.win=false; state.wave=1; state.score=0; state.coins=0; state.intermission=false; state.interTimer=0;
-    startWave(1); overlay.classList.add('hidden'); updateHUD();
+    net.started = isMP; // host 立即开始；guest 由快照触发
+    if (!isMP) startWave(1);
+    else if (net.role==='host') {
+      if (net.mode==='pvp') spawnWaveBuffs(2); else startWave(1);
+    }
+    // guest 的世界由 host 快照填充，此处不生成
+    overlay.classList.add('hidden'); updateHUD();
   }
   function startWave(n) {
     state.wave = n; state.spawnTimer = 0;
@@ -366,13 +436,14 @@
     }
   }
   function gameOver(win) {
-    state.running=false; state.over=true; state.win=win;
+    state.running=false; state.over=true; state.win=win; net.lastWin=win;
     overlay.classList.remove('hidden');
-    overlay.querySelector('h1').textContent = win?'🏆 胜利！':'！';
+    overlay.querySelector('h1').textContent = win?'🏆 胜利！':'挑战失败';
     overlay.querySelector('p').innerHTML = win
       ? `你守住了所有阵地！<br>地图 <b style="color:#7fffd4">${MAPS[state.mapIdx].name}</b> · 皮肤 <b style="color:#7fffd4">${SKINS[state.skinIdx].name}</b><br>最终分数 <b style="color:#7fffd4">${state.score}</b>`
       : `你被击毁了。<br>地图 <b style="color:#7fffd4">${MAPS[state.mapIdx].name}</b> · 皮肤 <b style="color:#7fffd4">${SKINS[state.skinIdx].name}</b><br>分数 <b style="color:#7fffd4">${state.score}</b> · 到达第 <b style="color:#7fffd4">${state.wave}</b> 波`;
-    startBtn.textContent = '再来一局';
+    startBtn.textContent = net.role==='guest' ? '等待房主再来' : '再来一局';
+    if (net.role==='host') sendSnapshot();
   }
   function togglePause() {
     state.paused = !state.paused;
@@ -410,42 +481,42 @@
 
   function update() {
     if (!state.running || state.paused) return;
-    for (let i=0;i<skillCd.length;i++) if (skillCd[i]>0) skillCd[i]--;
 
-    let dx=0, dy=0;
-    if (keys['w']||keys['arrowup']) dy-=1;
-    if (keys['s']||keys['arrowdown']) dy+=1;
-    if (keys['a']||keys['arrowleft']) dx-=1;
-    if (keys['d']||keys['arrowright']) dx+=1;
-    if (dx||dy) {
-      const len=Math.hypot(dx,dy);
-      const mv=slideMove(player, player.x+dx/len*player.speed, player.y+dy/len*player.speed);
-      player.x=mv.x; player.y=mv.y;
+    // ---- 联机 guest：只发送输入 + 应用 host 快照 ----
+    if (net.role === 'guest') {
+      net.inTick++;
+      if (net.inTick % 2 === 0) sendInput();
+      return;
     }
-    let target=null, best=1e9;
-    for (const e of enemies) { const dd=dist(player.x,player.y,e.x,e.y); if (dd<best){best=dd;target=e;} }
-    if (target) player.angle = Math.atan2(target.y-player.y, target.x-player.x);
-    if (player.multishot>0) player.multishot--;
-    if (player.ricochet>0) player.ricochet--;
-    player.cooldown--;
-    if (player.cooldown<=0 && (target||keys[' '])) { firePlayer(); player.cooldown=16; }
 
-    if (state.toSpawn>0) {
-      state.spawnTimer--;
-      if (state.spawnTimer<=0) { spawnEnemy(); state.toSpawn--; state.spawnTimer=70; }
-    } else if (enemies.length===0) {
-      if (state.wave>=12) { gameOver(true); return; }
-      if (!state.intermission) { state.intermission=true; state.interTimer=240; spawnWaveBuffs(2); playSound('waveclear'); floatText(player.x,player.y-44,'本波清空！捡取 buff','#7fffd4'); }
+    // 本地玩家（host 或单人）
+    const li = {
+      up: keys['w']||keys['arrowup'], down: keys['s']||keys['arrowdown'],
+      left: keys['a']||keys['arrowleft'], right: keys['d']||keys['arrowright'],
+      fire: !!keys[' '], skill:false, prevSkill:false,
+    };
+    if (!player.dead) simTank(player, li, false);
+    if (player2 && !player2.dead) simTank(player2, net.remoteInput, true);
+
+    if (net.mode !== 'pvp') {
+      if (state.toSpawn>0) {
+        state.spawnTimer--;
+        if (state.spawnTimer<=0) { spawnEnemy(); state.toSpawn--; state.spawnTimer=70; }
+      } else if (enemies.length===0) {
+        if (state.wave>=12) { gameOver(true); return; }
+        if (!state.intermission) { state.intermission=true; state.interTimer=240; spawnWaveBuffs(2); playSound('waveclear'); floatText(player.x,player.y-44,'本波清空！捡取 buff','#7fffd4'); }
+      }
+      if (state.intermission) { state.interTimer--; if (state.interTimer<=0) { state.intermission=false; startWave(state.wave+1); } }
     }
-    if (state.intermission) { state.interTimer--; if (state.interTimer<=0) { state.intermission=false; startWave(state.wave+1); } }
 
     const minDistToPlayer = 30;
     for (const e of enemies) {
       if (e.boss) { updateBoss(e); continue; }
-      const ang = Math.atan2(player.y-e.y, player.x-e.x);
-      const d = dist(e.x,e.y,player.x,player.y);
+      const tk = nearTank(e.x, e.y);
+      const ang = Math.atan2(tk.y-e.y, tk.x-e.x);
+      const d = dist(e.x,e.y,tk.x,tk.y);
       let nx=e.x, ny=e.y;
-      if (d > e.r+player.r+minDistToPlayer) { nx=e.x+Math.cos(ang)*e.speed; ny=e.y+Math.sin(ang)*e.speed; }
+      if (d > e.r+tk.r+minDistToPlayer) { nx=e.x+Math.cos(ang)*e.speed; ny=e.y+Math.sin(ang)*e.speed; }
       const mv=slideMove(e,nx,ny); e.x=mv.x; e.y=mv.y; e.angle=ang;
       e.cooldown--;
       if (e.cooldown<=0 && d<480) { fireBullet(e,true,undefined,e.dmg); playSound('eshoot'); e.cooldown=rand(70,130); }
@@ -455,8 +526,7 @@
       if (d>0 && d<min) { const push=(min-d)/2, ux=(a.x-b.x)/d, uy=(a.y-b.y)/d; a.x+=ux*push;a.y+=uy*push;b.x-=ux*push;b.y-=uy*push; }
     }
     for (const e of enemies) {
-      const d=dist(e.x,e.y,player.x,player.y), min=e.r+player.r;
-      if (d>0 && d<min) { const push=min-d; e.x+=(e.x-player.x)/d*push; e.y+=(e.y-player.y)/d*push; }
+      for (const tk of [player, player2]) { if (!tk) continue; const d=dist(e.x,e.y,tk.x,tk.y), min=e.r+tk.r; if (d>0 && d<min) { const push=min-d; e.x+=(e.x-tk.x)/d*push; e.y+=(e.y-tk.y)/d*push; } }
       pushOutOfObstacles(e);
     }
     for (const tm of teammates) {
@@ -472,7 +542,8 @@
       if (b.x<0||b.x>W||b.y<0||b.y>H) b.life=0;
       for (const o of obstacles) {
         if (circleRect(b.x,b.y,b.r,o)) {
-          if (!b.fromEnemy && player.ricochet>0 && (b.bounces||0) < 5) {
+          const ric = b.owner==='p2' ? (player2?player2.ricochet:0) : player.ricochet;
+          if (b.owner!=='e' && ric>0 && (b.bounces||0) < 5) {
             const cx = o.x+o.w/2, cy = o.y+o.h/2;
             const ox = (b.r + o.w/2) - Math.abs(b.x - cx);
             const oy = (b.r + o.h/2) - Math.abs(b.y - cy);
@@ -488,15 +559,22 @@
         }
       }
       if (b.life<=0) continue;
-      if (b.fromEnemy) {
-        if (dist(b.x,b.y,player.x,player.y)<player.r+b.r) {
-          player.hp -= b.dmg||9; b.life=0; burst(player.x,player.y,'#ff5b5b',10); playSound('hit'); updateHUD();
-          if (player.hp<=0){gameOver(false);return;}
-        } else {
-          for (const tm of teammates) { if (tm.dead) continue; if (dist(b.x,b.y,tm.x,tm.y)<tm.r+b.r){ tm.hp-=b.dmg||9; b.life=0; burst(tm.x,tm.y,'#9b8cff',10); if (tm.hp<=0){tm.dead=true;burst(tm.x,tm.y,'#9b8cff',16);} break; } }
+      if (b.owner==='e') {
+        let hitT=false;
+        for (const tk of [player, player2]) {
+          if (!tk || tk.dead) continue;
+          if (dist(b.x,b.y,tk.x,tk.y)<tk.r+b.r) {
+            tk.hp -= b.dmg||9; b.life=0; burst(tk.x,tk.y,'#ff5b5b',10); playSound('hit'); updateHUD(); hitT=true; break;
+          }
         }
+        if (!hitT) for (const tm of teammates) { if (tm.dead) continue; if (dist(b.x,b.y,tm.x,tm.y)<tm.r+b.r){ tm.hp-=b.dmg||9; b.life=0; burst(tm.x,tm.y,'#9b8cff',10); if (tm.hp<=0){tm.dead=true;burst(tm.x,tm.y,'#9b8cff',16);} break; } }
       } else {
-        for (const e of enemies) { if (e.dead) continue; if (dist(b.x,b.y,e.x,e.y)<e.r+b.r){ b.life=0; hurtEnemy(e,1); break; } }
+        let consumed=false;
+        for (const e of enemies) { if (e.dead) continue; if (dist(b.x,b.y,e.x,e.y)<e.r+b.r){ b.life=0; hurtEnemy(e,1); consumed=true; break; } }
+        if (!consumed && net.mode==='pvp') {
+          const foe = b.owner==='p1' ? player2 : player;
+          if (foe && !foe.dead && dist(b.x,b.y,foe.x,foe.y)<foe.r+b.r) { foe.hp-=b.dmg||9; b.life=0; burst(foe.x,foe.y,'#ff5b5b',10); playSound('hit'); updateHUD(); }
+        }
       }
     }
     bullets=bullets.filter(b=>b.life>0); obstacles=obstacles.filter(o=>!o.dead); enemies=enemies.filter(e=>!e.dead); teammates=teammates.filter(t=>!t.dead);
@@ -513,9 +591,12 @@
     missiles=missiles.filter(m=>!m.dead);
     for (const bf of buffs) {
       bf.pulse+=0.1;
-      const d=dist(bf.x,bf.y,player.x,player.y);
-      if (d<160){ bf.x+=(player.x-bf.x)*0.14; bf.y+=(player.y-bf.y)*0.14; }
-      if (d<player.r+bf.r){ applyBuff(bf.type); bf.dead=true; burst(bf.x,bf.y,buffColor(bf.type),14); }
+      for (const tk of [player, player2]) {
+        if (!tk || tk.dead) continue;
+        const d=dist(bf.x,bf.y,tk.x,tk.y);
+        if (d<160){ bf.x+=(tk.x-bf.x)*0.14; bf.y+=(tk.y-bf.y)*0.14; }
+        if (d<tk.r+bf.r){ applyBuff(tk, bf.type); bf.dead=true; burst(bf.x,bf.y,buffColor(bf.type),14); }
+      }
     }
     buffs=buffs.filter(b=>!b.dead);
     for (const ef of effects) { ef.life--; if (ef.type==='ring') ef.r+=(ef.maxR-ef.r)*0.25; }
@@ -524,6 +605,111 @@
     particles=particles.filter(p=>p.life>0);
     for (const f of floaters) { f.y-=0.5; f.life--; }
     floaters=floaters.filter(f=>f.life>0);
+
+    if (net.role==='host' || net.role===null) checkEnd();
+    if (net.role==='host') { net.snapTick++; if (net.snapTick % 2 === 0) sendSnapshot(); }
+  }
+
+  // ---- 联机辅助函数 ----
+  function aimTarget(tank, isP2) {
+    if (net.mode === 'pvp') return isP2 ? player : player2;
+    let best=1e9, t=null;
+    for (const e of enemies) { const d=dist(tank.x,tank.y,e.x,e.y); if (d<best){best=d;t=e;} }
+    return t;
+  }
+  function simTank(tank, input, isP2) {
+    for (let i=0;i<3;i++) if (tank.skillCd[i]>0) tank.skillCd[i]--;
+    let dx=0, dy=0;
+    if (input.up) dy-=1; if (input.down) dy+=1; if (input.left) dx-=1; if (input.right) dx+=1;
+    if (dx||dy) { const len=Math.hypot(dx,dy); const mv=slideMove(tank, tank.x+dx/len*tank.speed, tank.y+dy/len*tank.speed); tank.x=mv.x; tank.y=mv.y; pushOutOfObstacles(tank); }
+    const target = aimTarget(tank, isP2);
+    if (target) tank.angle = Math.atan2(target.y-tank.y, target.x-tank.x);
+    if (tank.multishot>0) tank.multishot--;
+    if (tank.ricochet>0) tank.ricochet--;
+    tank.cooldown--;
+    if (tank.cooldown<=0 && (target || input.fire)) { firePlayer(tank); tank.cooldown=16; }
+    if (input.skill && !input.prevSkill) activateSkill(tank);
+    input.prevSkill = input.skill;
+  }
+  function checkEnd() {
+    if (state.over) return;
+    if (net.mode === 'pvp') {
+      if (player2 && player2.hp<=0) { gameOver(true); return; }
+      if (player.hp<=0) { gameOver(false); return; }
+    } else {
+      const p1dead = player.hp<=0, p2dead = player2 ? player2.hp<=0 : true;
+      if (p1dead && p2dead) gameOver(false);
+    }
+  }
+  function sendSnapshot() {
+    if (!net.conn) return;
+    const snap = {
+      t:'snap', started: net.started, over: state.over, win: state.win, hostWon: net.lastWin,
+      wave: state.wave, score: state.score, coins: state.coins, intermission: state.intermission,
+      player: tankState(player),
+      player2: player2 ? tankState(player2) : null,
+      enemies: enemies.map(e=>({x:e.x,y:e.y,angle:e.angle,r:e.r,hp:e.hp,maxHp:e.maxHp,color:e.color,type:e.type,dmg:e.dmg,boss:!!e.boss,atkTimer:e.atkTimer,pattern:e.pattern,summonTimer:e.summonTimer,cooldown:e.cooldown})),
+      bullets: bullets.map(b=>({x:b.x,y:b.y,vx:b.vx,vy:b.vy,r:b.r,owner:b.owner,fromEnemy:b.fromEnemy,dmg:b.dmg,life:b.life,bounces:b.bounces||0})),
+      missiles: missiles.map(m=>({x:m.x,y:m.y,vx:m.vx,vy:m.vy,life:m.life})),
+      buffs: buffs.map(bf=>({x:bf.x,y:bf.y,r:bf.r,type:bf.type,pulse:bf.pulse,label:bf.label})),
+      obstacles: obstacles.map(o=>({x:o.x,y:o.y,w:o.w,h:o.h,type:o.type,hp:o.hp})),
+      effects: effects.map(ef=>({type:ef.type,x:ef.x,y:ef.y,angle:ef.angle,len:ef.len,r:ef.r,maxR:ef.maxR,life:ef.life,color:ef.color})),
+    };
+    try { net.conn.send(snap); } catch(e){}
+  }
+  function applySnapshot(s) {
+    state.wave=s.wave; state.score=s.score; state.coins=s.coins; state.intermission=s.intermission;
+    state.over=s.over; state.win=s.win;
+    copyTank(player, s.player);
+    if (s.player2) { if (!player2) player2=makeTank(true); copyTank(player2, s.player2); } else player2=null;
+    enemies = s.enemies.map(e=>({x:e.x,y:e.y,angle:e.angle,r:e.r,hp:e.hp,maxHp:e.maxHp,color:e.color,type:e.type,dmg:e.dmg,boss:e.boss,atkTimer:e.atkTimer,pattern:e.pattern,summonTimer:e.summonTimer,cooldown:e.cooldown}));
+    bullets = s.bullets.map(b=>({x:b.x,y:b.y,vx:b.vx,vy:b.vy,r:b.r,owner:b.owner,fromEnemy:b.fromEnemy,dmg:b.dmg,life:b.life,bounces:b.bounces}));
+    missiles = s.missiles.map(m=>({x:m.x,y:m.y,vx:m.vx,vy:m.vy,life:m.life,turn:0.09}));
+    buffs = s.buffs.map(bf=>({x:bf.x,y:bf.y,r:bf.r,type:bf.type,pulse:bf.pulse,life:9999,label:bf.label}));
+    obstacles = s.obstacles.map(o=>({x:o.x,y:o.y,w:o.w,h:o.h,type:o.type,hp:o.hp,dead:false}));
+    effects = s.effects.map(ef=>({type:ef.type,x:ef.x,y:ef.y,angle:ef.angle,len:ef.len,r:ef.r,maxR:ef.maxR,life:ef.life,color:ef.color}));
+    updateHUD();
+    if (s.started && !s.over) { net.started=true; overlay.classList.add('hidden'); }
+    if (s.over && !state.over) { const gw = net.mode==='pvp' ? !s.hostWon : s.hostWon; gameOver(gw); }
+  }
+  function sendInput() {
+    if (!net.conn) return;
+    const inp = { t:'in', up:keys['w']||keys['arrowup'], down:keys['s']||keys['arrowdown'], left:keys['a']||keys['arrowleft'], right:keys['d']||keys['arrowright'], fire:!!keys[' '], skill:!!keys['f'], skillIdx:player.activeSkill };
+    try { net.conn.send(inp); } catch(e){}
+  }
+  function onData(data) {
+    if (!data || !data.t) return;
+    if (data.t === 'config') { net.mode = data.mode || net.mode; }
+    else if (data.t === 'hello') { netStatus('队友已加入！点"开始游戏"开始'); }
+    else if (data.t === 'in') {
+      net.remoteInput = { up:data.up, down:data.down, left:data.left, right:data.right, fire:data.fire, skill:data.skill, skillIdx:data.skillIdx, prevSkill: net.remoteInput.prevSkill };
+      if (player2) player2.activeSkill = data.skillIdx||0;
+    }
+    else if (data.t === 'snap') applySnapshot(data);
+  }
+  function genRoomCode() { const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s=''; for(let i=0;i<6;i++) s+=chars[Math.floor(Math.random()*chars.length)]; return s; }
+  function setupConn(c) {
+    net.conn = c;
+    c.on('open', () => {
+      net.connected = true;
+      if (net.role==='host') { netStatus('队友已连接！点"开始游戏"开始'); try{ c.send({t:'config',mode:net.mode}); }catch(e){} if (net.pendingStart){ net.pendingStart=false; startGame(); } }
+      else { netStatus('已连接！等待房主开始…'); try{ c.send({t:'hello'}); }catch(e){} state.running=true; overlay.classList.remove('hidden'); overlay.querySelector('h1').textContent='已连接'; overlay.querySelector('p').textContent='等待房主开始游戏…'; startBtn.textContent='等待中'; }
+    });
+    c.on('data', onData);
+    c.on('close', () => { net.connected=false; netStatus('连接已断开'); if (state.running) gameOver(false); });
+  }
+  function setupNet(role) {
+    if (typeof Peer === 'undefined') { netStatus('联机组件加载失败，请刷新后重试'); return false; }
+    net.role = role; net.connected=false;
+    try { net.peer = role==='host' ? new Peer(genRoomCode()) : new Peer(); }
+    catch(e) { netStatus('无法创建连接：'+e.message); return false; }
+    net.peer.on('open', (id) => {
+      if (role==='host') { net.room=id; netStatus('房间码：'+id+'（发给朋友即可加入）'); const bH=document.getElementById('btnHost'); if(bH) bH.disabled=true; const rI=document.getElementById('roomCode'); if(rI) rI.value=id; }
+      else { netStatus('正在连接房间…'); const c=net.peer.connect(net.room,{reliable:true}); setupConn(c); }
+    });
+    net.peer.on('connection', (c) => { setupConn(c); netStatus('队友已加入！点"开始游戏"开始'); });
+    net.peer.on('error', (e) => { netStatus('连接错误：'+(e.type||e.message)); });
+    return true;
   }
 
   // ---- 渲染 ----
@@ -535,6 +721,7 @@
     // 车身 / 炮塔 / 顶
     let body, turret, dome;
     if (kind==='player') { const sk=SKINS[state.skinIdx]; body=sk.palette.body; turret=sk.palette.turret; dome=sk.palette.dome; }
+    else if (kind==='p2') { body='#ffb24a'; turret='#ff7a2a'; dome='#ffe0b0'; }
     else if (kind==='ally') { body='#9b8cff'; turret='#6c5bd6'; dome='#e6e0ff'; }
     else if (kind==='boss') { body='#7a1f3d'; turret='#ff3b6b'; dome='#ffd7d7'; }
     else { body='#3a2230'; turret='#ff5b5b'; dome='#ffd7d7'; }
@@ -632,8 +819,9 @@
     for (const p of particles) { ctx.globalAlpha=clamp(p.life/40,0,1); ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fill(); }
     ctx.globalAlpha=1;
     for (const b of bullets) {
-      ctx.fillStyle=b.fromEnemy?'#ff6b6b':'#9bffea';
-      ctx.shadowColor=b.fromEnemy?'#ff6b6b':'#9bffea'; ctx.shadowBlur=8;
+      const ec = b.owner==='e';
+      ctx.fillStyle=ec?'#ff6b6b':(b.owner==='p2'?'#ffd27b':'#9bffea');
+      ctx.shadowColor=ec?'#ff6b6b':(b.owner==='p2'?'#ffd27b':'#9bffea'); ctx.shadowBlur=8;
       ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
     }
     for (const m of missiles) {
@@ -653,6 +841,15 @@
     }
     for (const e of enemies) drawTank(e, e.boss?'boss':'enemy');
     if (!state.over) drawPlayerSprite();
+    if (!state.over && player2) {
+      if (player2.dead) { ctx.globalAlpha=0.4; }
+      drawTank(player2, 'p2');
+      ctx.globalAlpha=1;
+      const bw=40,bx=player2.x-bw/2,by=player2.y-player2.r-16;
+      ctx.fillStyle='#000'; ctx.fillRect(bx-1,by-1,bw+2,6);
+      ctx.fillStyle='#ff5b5b'; ctx.fillRect(bx,by,bw,4);
+      ctx.fillStyle='#ffb24a'; ctx.fillRect(bx,by,bw*clamp(player2.hp/player2.maxHp,0,1),4);
+    }
 
     const boss = enemies.find(e => e.boss);
     if (boss) {
@@ -682,12 +879,12 @@
       const sx=W/2-total/2, sy=H-56;
       for (let i=0;i<SKILLS.length;i++) {
         const s=SKILLS[i],x=sx+i*(skW+gap);
-        ctx.fillStyle=i===activeSkill?'rgba(123,255,212,.18)':'rgba(20,24,40,.7)'; ctx.fillRect(x,sy,skW,skH);
-        ctx.strokeStyle=i===activeSkill?'#7fffd4':'#313862'; ctx.lineWidth=2; ctx.strokeRect(x,sy,skW,skH);
-        ctx.fillStyle=i===activeSkill?'#7fffd4':'#cdd6ff'; ctx.font='bold 13px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillStyle=i===player.activeSkill?'rgba(123,255,212,.18)':'rgba(20,24,40,.7)'; ctx.fillRect(x,sy,skW,skH);
+        ctx.strokeStyle=i===player.activeSkill?'#7fffd4':'#313862'; ctx.lineWidth=2; ctx.strokeRect(x,sy,skW,skH);
+        ctx.fillStyle=i===player.activeSkill?'#7fffd4':'#cdd6ff'; ctx.font='bold 13px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
         ctx.fillText((i+1)+' '+s.name, x+skW/2, sy+12);
         ctx.fillStyle='#9aa3cc'; ctx.font='10px sans-serif';
-        ctx.fillText(skillCd[i]>0?'冷却'+Math.ceil(skillCd[i]/60)+'s':(s.cost+'分'), x+skW/2, sy+25);
+        ctx.fillText(player.skillCd[i]>0?'冷却'+Math.ceil(player.skillCd[i]/60)+'s':(s.cost+'分'), x+skW/2, sy+25);
       }
       ctx.fillStyle='#5b6390'; ctx.font='10px sans-serif'; ctx.textAlign='center';
       ctx.fillText('F 释放', sx+total/2, sy-6);
@@ -728,10 +925,42 @@
   startBtn.addEventListener('click', () => {
     initAudio();
     if (state.paused) { togglePause(); return; }
-    startGame();
+    if (net.role==='host') {
+      if (!net.connected) { net.pendingStart=true; netStatus('等待队友加入后再开始…'); return; }
+      startGame();
+    } else if (net.role==='guest') {
+      netStatus('你是加入方，请等待房主开始游戏');
+    } else {
+      startGame();
+    }
   });
 
+  function wireNetUI() {
+    const mc = document.getElementById('modeChips');
+    const bH = document.getElementById('btnHost');
+    const bJ = document.getElementById('btnJoin');
+    const rI = document.getElementById('roomCode');
+    if (mc) mc.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-mode]'); if (!b) return;
+      net.mode = b.dataset.mode;
+      [...mc.children].forEach(c => c.classList.toggle('active', c===b));
+      if (net.role==='host' && net.conn) { try{ net.conn.send({t:'config',mode:net.mode}); }catch(e){} }
+    });
+    if (bH) bH.addEventListener('click', () => {
+      initAudio();
+      if (net.role && net.peer) { netStatus('已创建/加入房间，请等待或开始'); return; }
+      setupNet('host');
+    });
+    if (bJ) bJ.addEventListener('click', () => {
+      initAudio();
+      const code = (rI.value||'').trim().toUpperCase();
+      if (!code) { netStatus('请输入房间码'); return; }
+      net.room = code; setupNet('guest');
+    });
+  }
+
   buildChips();
+  wireNetUI();
   buildObstacles();
   render();
   loop();

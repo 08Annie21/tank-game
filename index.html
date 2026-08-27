@@ -222,6 +222,7 @@
       case 'kill':     tone(520, 0.07, 'square', 0.05, 300); setTimeout(() => noise(0.12, 0.10), 20); break;
       case 'hit':      tone(150, 0.18, 'sawtooth', 0.08, 80); break;
       case 'buff':     tone(520, 0.09, 'triangle', 0.07, 780); setTimeout(() => tone(780, 0.10, 'triangle', 0.07, 1040), 90); break;
+      case 'heal':     tone(660, 0.10, 'sine', 0.07, 990); setTimeout(() => tone(990, 0.12, 'sine', 0.07, 1320), 80); break;
       case 'laser':    tone(900, 0.18, 'sawtooth', 0.06, 300); break;
       case 'launch':   tone(300, 0.18, 'square', 0.05, 700); break;
       case 'sword':    tone(600, 0.12, 'triangle', 0.06, 1200); setTimeout(() => tone(900, 0.12, 'triangle', 0.06, 1500), 80); break;
@@ -250,7 +251,8 @@
     cooldown: 0, multishot: 0, ricochet: 0, skillCd:[0,0,0], activeSkill:0, dead:false,
   };
   let player2 = null; // 联机时第二个坦克（host 端由远端输入驱动，guest 端由快照填充）
-  let bullets = [], enemies = [], teammates = [], buffs = [], particles = [], floaters = [], missiles = [], effects = [];
+  let bullets = [], enemies = [], teammates = [], buffs = [], particles = [], floaters = [], missiles = [], effects = [], medkits = [];
+  let medTimer = 0;
 
   function makeTank(isRemote) {
     return {
@@ -409,7 +411,7 @@
       player2.angle = Math.PI/2; player2.multishot = 0; player2.ricochet = 0; player2.dead=false;
       player2.skillCd=[0,0,0]; player2.activeSkill=0;
     } else player2 = null;
-    bullets=[]; enemies=[]; teammates=[]; buffs=[]; particles=[]; floaters=[]; missiles=[]; effects=[];
+    bullets=[]; enemies=[]; teammates=[]; buffs=[]; particles=[]; floaters=[]; missiles=[]; effects=[]; medkits=[]; medTimer=0;
     state.running=true; state.paused=false; state.over=false; state.win=false; state.wave=1; state.score=0; state.coins=0; state.intermission=false; state.interTimer=0;
     net.started = isMP; // host 立即开始；guest 由快照触发
     if (!isMP) startWave(1);
@@ -599,6 +601,32 @@
       }
     }
     buffs=buffs.filter(b=>!b.dead);
+    // ---- 医疗包：战场上定时刷新，碰一下回血 ----
+    if ((net.role==='host' || net.role===null) && state.running && !state.intermission && !state.over) {
+      medTimer--;
+      if (medTimer<=0 && medkits.length<3) {
+        medTimer = 600;
+        let sx, sy, ok=false;
+        for (let tries=0; tries<30 && !ok; tries++) {
+          sx = rand(70, W-70); sy = rand(70, H-70);
+          ok = true;
+          for (const o of obstacles) if (circleRect(sx, sy, 22, o)) { ok=false; break; }
+        }
+        medkits.push({ x:sx, y:sy, r:14, heal:30, pulse:0 });
+      }
+    }
+    for (const mk of medkits) {
+      mk.pulse += 0.12;
+      for (const tk of [player, player2]) {
+        if (!tk || tk.dead) continue;
+        if (dist(mk.x, mk.y, tk.x, tk.y) < tk.r + mk.r) {
+          tk.hp = Math.min(tk.maxHp, tk.hp + mk.heal); updateHUD();
+          floatText(tk.x, tk.y-34, '+'+mk.heal+' HP', '#7fffd4'); burst(mk.x, mk.y, '#7fffd4', 14); playSound('heal'); mk.dead = true;
+          break;
+        }
+      }
+    }
+    medkits = medkits.filter(m=>!m.dead);
     for (const ef of effects) { ef.life--; if (ef.type==='ring') ef.r+=(ef.maxR-ef.r)*0.25; }
     effects=effects.filter(e=>e.life>0);
     for (const p of particles) { p.x+=p.vx; p.y+=p.vy; p.life--; p.vx*=0.94; p.vy*=0.94; }
@@ -652,6 +680,7 @@
       bullets: bullets.map(b=>({x:b.x,y:b.y,vx:b.vx,vy:b.vy,r:b.r,owner:b.owner,fromEnemy:b.fromEnemy,dmg:b.dmg,life:b.life,bounces:b.bounces||0})),
       missiles: missiles.map(m=>({x:m.x,y:m.y,vx:m.vx,vy:m.vy,life:m.life})),
       buffs: buffs.map(bf=>({x:bf.x,y:bf.y,r:bf.r,type:bf.type,pulse:bf.pulse,label:bf.label})),
+      medkits: medkits.map(mk=>({x:mk.x,y:mk.y,r:mk.r,heal:mk.heal,pulse:mk.pulse})),
       obstacles: obstacles.map(o=>({x:o.x,y:o.y,w:o.w,h:o.h,type:o.type,hp:o.hp})),
       effects: effects.map(ef=>({type:ef.type,x:ef.x,y:ef.y,angle:ef.angle,len:ef.len,r:ef.r,maxR:ef.maxR,life:ef.life,color:ef.color})),
     };
@@ -672,6 +701,7 @@
     bullets = s.bullets.map(b=>({x:b.x,y:b.y,vx:b.vx,vy:b.vy,r:b.r,owner:b.owner,fromEnemy:b.fromEnemy,dmg:b.dmg,life:b.life,bounces:b.bounces}));
     missiles = s.missiles.map(m=>({x:m.x,y:m.y,vx:m.vx,vy:m.vy,life:m.life,turn:0.09}));
     buffs = s.buffs.map(bf=>({x:bf.x,y:bf.y,r:bf.r,type:bf.type,pulse:bf.pulse,life:9999,label:bf.label}));
+    medkits = s.medkits ? s.medkits.map(mk=>({x:mk.x,y:mk.y,r:mk.r,heal:mk.heal,pulse:mk.pulse})) : [];
     obstacles = s.obstacles.map(o=>({x:o.x,y:o.y,w:o.w,h:o.h,type:o.type,hp:o.hp,dead:false}));
     effects = s.effects.map(ef=>({type:ef.type,x:ef.x,y:ef.y,angle:ef.angle,len:ef.len,r:ef.r,maxR:ef.maxR,life:ef.life,color:ef.color}));
     updateHUD();
@@ -814,6 +844,18 @@
       ctx.fillStyle='#0d0f1a'; ctx.font='bold 15px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.fillText(buffIcon(bf.type),bf.x,bf.y+1);
       ctx.fillStyle=col; ctx.font='bold 11px sans-serif'; ctx.fillText(bf.label||buffName(bf.type),bf.x,bf.y-pr-8);
+    }
+    for (const mk of medkits) {
+      const s = mk.r + Math.sin(mk.pulse)*2;
+      ctx.save();
+      ctx.shadowColor='#7fffd4'; ctx.shadowBlur=14;
+      ctx.fillStyle='rgba(20,46,40,.92)'; ctx.strokeStyle='#7fffd4'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(mk.x, mk.y, s, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.shadowBlur=0; ctx.fillStyle='#7fffd4';
+      const a=s*0.5, t=s*0.18;
+      ctx.fillRect(mk.x-t/2, mk.y-a, t, a*2);
+      ctx.fillRect(mk.x-a, mk.y-t/2, a*2, t);
+      ctx.restore();
     }
     for (const tm of teammates) {
       drawTank(tm,'ally');

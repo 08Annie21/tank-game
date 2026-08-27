@@ -143,6 +143,7 @@
   const keys = {};
   addEventListener('keydown', e => {
     if ([' ','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
+    initAudio();
     const k = e.key.toLowerCase(); keys[k] = true;
     if (e.repeat) return;
     if (k === 'p' && state.running) togglePause();
@@ -190,8 +191,10 @@
   function playSound(name) {
     if (!audioCtx || state.muted) return;
     switch (name) {
-      case 'shoot':    tone(720, 0.05, 'square', 0.04, 520); break;
+      case 'shoot':    tone(680, 0.06, 'square', 0.06, 440); break;
+      case 'eshoot':   tone(300, 0.05, 'sawtooth', 0.02, 200); break;
       case 'explode':  noise(0.22, 0.12); break;
+      case 'kill':     tone(520, 0.07, 'square', 0.05, 300); setTimeout(() => noise(0.12, 0.10), 20); break;
       case 'hit':      tone(150, 0.18, 'sawtooth', 0.08, 80); break;
       case 'buff':     tone(520, 0.09, 'triangle', 0.07, 780); setTimeout(() => tone(780, 0.10, 'triangle', 0.07, 1040), 90); break;
       case 'laser':    tone(900, 0.18, 'sawtooth', 0.06, 300); break;
@@ -297,7 +300,7 @@
   function hurtEnemy(e, dmg) {
     if (e.dead) return;
     e.hp -= dmg; burst(e.x, e.y, '#ffd27b', 8);
-    if (e.hp <= 0) { e.dead = true; state.score += 10*state.wave; state.coins += 20*state.wave; burst(e.x,e.y,'#ff7b7b',18); playSound('explode'); updateHUD(); if (e.boss) onBossDeath(e); }
+    if (e.hp <= 0) { e.dead = true; state.score += 10*state.wave; state.coins += 20*state.wave; burst(e.x,e.y,'#ff7b7b',18); playSound('kill'); updateHUD(); if (e.boss) onBossDeath(e); }
   }
   function selectSkill(i) { activeSkill=i; floatText(player.x, player.y-40, '技能: '+SKILLS[i].name, '#9b8cff'); }
   function activateSkill() {
@@ -445,7 +448,7 @@
       if (d > e.r+player.r+minDistToPlayer) { nx=e.x+Math.cos(ang)*e.speed; ny=e.y+Math.sin(ang)*e.speed; }
       const mv=slideMove(e,nx,ny); e.x=mv.x; e.y=mv.y; e.angle=ang;
       e.cooldown--;
-      if (e.cooldown<=0 && d<480) { fireBullet(e,true,undefined,e.dmg); e.cooldown=rand(70,130); }
+      if (e.cooldown<=0 && d<480) { fireBullet(e,true,undefined,e.dmg); playSound('eshoot'); e.cooldown=rand(70,130); }
     }
     for (let i=0;i<enemies.length;i++) for (let j=i+1;j<enemies.length;j++) {
       const a=enemies[i],b=enemies[j], d=dist(a.x,a.y,b.x,b.y), min=a.r+b.r;

@@ -248,12 +248,15 @@
   function floatText(x, y, text, color) {
     floaters.push({ x, y, text, color, life: 50 });
   }
-  function maybeDropBuff(x, y) {
-    if (Math.random() < 0.45) {
+  function maybeDropBuff(x, y, force) {
+    if (force || Math.random() < 0.55) {
       const types = ['heal', 'multishot', 'teammate'];
       const type = types[Math.floor(Math.random() * types.length)];
-      buffs.push({ x, y, r: 13, type, pulse: 0, life: 720 });
+      buffs.push({ x, y, r: 16, type, pulse: 0, life: 900, label: buffName(type) });
     }
+  }
+  function buffName(type) {
+    return type === 'heal' ? '治疗' : type === 'multishot' ? '多发' : '队友';
   }
   function applyBuff(type) {
     if (type === 'heal') {
@@ -275,7 +278,7 @@
   }
 
   // ---- 游戏状态 ----
-  const state = { running: false, paused: false, over: false, win: false, wave: 1, score: 0, toSpawn: 0, spawnTimer: 0 };
+  const state = { running: false, paused: false, over: false, win: false, wave: 1, score: 0, toSpawn: 0, spawnTimer: 0, killsThisWave: 0 };
 
   function startGame() {
     buildObstacles();
@@ -293,6 +296,7 @@
     state.wave = n;
     state.toSpawn = 2 + n;
     state.spawnTimer = 0;
+    state.killsThisWave = 0;
     updateHUD();
   }
 
@@ -477,6 +481,7 @@
           if (player.hp <= 0) { gameOver(false); return; }
         } else {
           for (const tm of teammates) {
+            if (tm.dead) continue;
             if (dist(b.x, b.y, tm.x, tm.y) < tm.r + b.r) {
               tm.hp -= 9; b.life = 0; burst(tm.x, tm.y, '#9b8cff', 10);
               if (tm.hp <= 0) { tm.dead = true; burst(tm.x, tm.y, '#9b8cff', 16); }
@@ -486,12 +491,13 @@
         }
       } else {
         for (const e of enemies) {
+          if (e.dead) continue;
           if (dist(b.x, b.y, e.x, e.y) < e.r + b.r) {
             e.hp -= 1; b.life = 0; burst(e.x, e.y, '#ffd27b', 10);
             if (e.hp <= 0) {
-              e.dead = true; state.score += 10 * state.wave;
+              e.dead = true; state.killsThisWave++; state.score += 10 * state.wave;
               burst(e.x, e.y, '#ff7b7b', 18);
-              maybeDropBuff(e.x, e.y);
+              maybeDropBuff(e.x, e.y, state.killsThisWave === 1);
               updateHUD();
             }
             break;
@@ -504,10 +510,15 @@
     enemies = enemies.filter(e => !e.dead);
     teammates = teammates.filter(t => !t.dead);
 
-    // --- buff 掉落物 ---
+    // --- buff 掉落物（靠近会被吸附）---
     for (const bf of buffs) {
       bf.pulse += 0.1; bf.life--;
-      if (dist(bf.x, bf.y, player.x, player.y) < player.r + bf.r) {
+      const d = dist(bf.x, bf.y, player.x, player.y);
+      if (d < 160) {
+        bf.x += (player.x - bf.x) * 0.14;
+        bf.y += (player.y - bf.y) * 0.14;
+      }
+      if (d < player.r + bf.r) {
         applyBuff(bf.type); bf.dead = true;
         burst(bf.x, bf.y, buffColor(bf.type), 14);
       }
@@ -566,19 +577,22 @@
       }
     }
 
-    // buff 掉落物
+    // buff 掉落物（带名称标签，更显眼）
     for (const bf of buffs) {
       const col = buffColor(bf.type);
-      const pr = bf.r + Math.sin(bf.pulse) * 2;
-      ctx.globalAlpha = bf.life < 120 ? Math.max(0.2, bf.life/120) : 1;
-      ctx.shadowColor = col; ctx.shadowBlur = 14;
+      const pr = bf.r + Math.sin(bf.pulse) * 2.5;
+      ctx.globalAlpha = bf.life < 120 ? Math.max(0.25, bf.life/120) : 1;
+      ctx.shadowColor = col; ctx.shadowBlur = 16;
       ctx.fillStyle = col;
       ctx.beginPath(); ctx.arc(bf.x, bf.y, pr, 0, Math.PI*2); ctx.fill();
       ctx.shadowBlur = 0;
       ctx.fillStyle = '#0d0f1a';
-      ctx.font = 'bold 14px sans-serif';
+      ctx.font = 'bold 15px sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(buffIcon(bf.type), bf.x, bf.y + 1);
+      ctx.fillStyle = col;
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(bf.label || buffName(bf.type), bf.x, bf.y - pr - 8);
       ctx.globalAlpha = 1;
     }
 

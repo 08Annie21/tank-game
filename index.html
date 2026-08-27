@@ -71,7 +71,7 @@
       <span>F 释放技能（消耗积分）</span>
       <span>P 暂停 · M 静音</span>
     </div>
-    <p style="font-size:12px;color:#6f78a8;">第 4、8 波出现 BOSS；清空一波捡 buff；皮肤"丛林/沙漠/霓虹/烈焰"使用 AI 生成的坦克贴图。</p>
+    <p style="font-size:12px;color:#6f78a8;">共 12 波，第 4、8、12 波出现 BOSS；清空一波捡 buff（含"弹射"可让子弹反弹）；皮肤"丛林/沙漠/霓虹/烈焰"使用 AI 生成的坦克贴图。</p>
     <button id="start">开始游戏</button>
   </div>
   <div id="tip">提示：先选地图与皮肤，按"开始游戏"进入战场。第 4、8 波 BOSS 用技能集火！</div>
@@ -219,7 +219,7 @@
   const player = {
     x: W/2, y: H - 100, r: 18, speed: 3.4,
     angle: -Math.PI/2, hp: 100, maxHp: 100,
-    cooldown: 0, multishot: 0,
+    cooldown: 0, multishot: 0, ricochet: 0,
   };
   let bullets = [], enemies = [], teammates = [], buffs = [], particles = [], floaters = [], missiles = [], effects = [];
 
@@ -242,7 +242,7 @@
     enemies.push({ x, y, r, speed, angle: 0, hp, maxHp: hp, cooldown: rand(20, cd), color, dmg, type });
   }
   function spawnBoss(n) {
-    const hp = n === 8 ? 140 : 75;
+    const hp = n === 12 ? 220 : n === 8 ? 140 : 75;
     enemies.push({ x: W/2, y: -40, r: 46, speed: 1.15, angle: Math.PI/2, hp, maxHp: hp, cooldown: 60, color:'#ff3b6b', dmg: 12, type:'boss', boss:true, atkTimer:70, pattern:0, summonTimer:320 });
     spawnEnemy(); spawnEnemy();
     floatText(player.x, player.y - 50, '⚠ BOSS 来袭!', '#ff5b5b');
@@ -280,9 +280,9 @@
   function burst(x, y, color, n=14) {
     for (let i=0;i<n;i++) { const a=rand(0, Math.PI*2), s=rand(1,4); particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:rand(20,40),color}); }
   }
-  function buffColor(t) { return t==='heal'?'#7fffd4': t==='multishot'?'#ffd27b':'#9b8cff'; }
-  function buffIcon(t) { return t==='heal'?'+': t==='multishot'?'⋙':'♥'; }
-  function buffName(t) { return t==='heal'?'治疗': t==='multishot'?'多发':'队友'; }
+  function buffColor(t) { return t==='heal'?'#7fffd4': t==='multishot'?'#ffd27b': t==='teammate'?'#9b8cff':'#5be0ff'; }
+  function buffIcon(t) { return t==='heal'?'+': t==='multishot'?'⋙': t==='teammate'?'♥':'↻'; }
+  function buffName(t) { return t==='heal'?'治疗': t==='multishot'?'多发': t==='teammate'?'队友':'弹射'; }
   function floatText(x,y,text,color) { floaters.push({x,y,text,color,life:50}); }
   function applyBuff(type) {
     playSound('buff');
@@ -292,6 +292,7 @@
       if (teammates.length < 2) { teammates.push({ x:player.x-36, y:player.y+36, r:16, angle:0, hp:30, maxHp:30, cooldown:0 }); floatText(player.x,player.y-34,'队友支援!','#9b8cff'); }
       else { player.hp = Math.min(player.maxHp, player.hp+25); updateHUD(); floatText(player.x,player.y-34,'+25 HP','#7fffd4'); }
     }
+    else if (type==='ricochet') { player.ricochet = 900; floatText(player.x,player.y-34,'弹射子弹!','#5be0ff'); }
   }
   function hurtEnemy(e, dmg) {
     if (e.dead) return;
@@ -339,7 +340,7 @@
   function startGame() {
     buildObstacles();
     player.x = W/2; player.y = H-100; player.hp = player.maxHp;
-    player.angle = -Math.PI/2; player.multishot = 0;
+    player.angle = -Math.PI/2; player.multishot = 0; player.ricochet = 0;
     bullets=[]; enemies=[]; teammates=[]; buffs=[]; particles=[]; floaters=[]; missiles=[]; effects=[];
     skillCd=[0,0,0]; activeSkill=0;
     state.running=true; state.paused=false; state.over=false; state.win=false; state.wave=1; state.score=0; state.coins=0; state.intermission=false; state.interTimer=0;
@@ -347,12 +348,12 @@
   }
   function startWave(n) {
     state.wave = n; state.spawnTimer = 0;
-    if (n===4 || n===8) { state.toSpawn = 0; spawnBoss(n); }
+    if (n===4 || n===8 || n===12) { state.toSpawn = 0; spawnBoss(n); }
     else state.toSpawn = 2 + n;
     updateHUD();
   }
   function spawnWaveBuffs(n) {
-    const types = ['heal','multishot','teammate'];
+    const types = ['heal','multishot','teammate','ricochet'];
     for (let i=0;i<n;i++) {
       const ang = rand(0, Math.PI*2), rad = rand(90, 150);
       let bx = clamp(player.x + Math.cos(ang)*rad, 40, W-40);
@@ -422,6 +423,7 @@
     for (const e of enemies) { const dd=dist(player.x,player.y,e.x,e.y); if (dd<best){best=dd;target=e;} }
     if (target) player.angle = Math.atan2(target.y-player.y, target.x-player.x);
     if (player.multishot>0) player.multishot--;
+    if (player.ricochet>0) player.ricochet--;
     player.cooldown--;
     if (player.cooldown<=0 && (target||keys[' '])) { firePlayer(); player.cooldown=16; }
 
@@ -429,7 +431,7 @@
       state.spawnTimer--;
       if (state.spawnTimer<=0) { spawnEnemy(); state.toSpawn--; state.spawnTimer=70; }
     } else if (enemies.length===0) {
-      if (state.wave>=8) { gameOver(true); return; }
+      if (state.wave>=12) { gameOver(true); return; }
       if (!state.intermission) { state.intermission=true; state.interTimer=240; spawnWaveBuffs(2); playSound('waveclear'); floatText(player.x,player.y-44,'本波清空！捡取 buff','#7fffd4'); }
     }
     if (state.intermission) { state.interTimer--; if (state.interTimer<=0) { state.intermission=false; startWave(state.wave+1); } }
@@ -467,10 +469,19 @@
       if (b.x<0||b.x>W||b.y<0||b.y>H) b.life=0;
       for (const o of obstacles) {
         if (circleRect(b.x,b.y,b.r,o)) {
-          b.life=0;
-          if (o.type==='wall') { o.hp--; burst(b.x,b.y,'#c89b6b',6); if (o.hp<=0){ o.dead=true; burst(o.x+o.w/2,o.y+o.h/2,'#c89b6b',16); } }
-          else burst(b.x,b.y,'#9fb0d0',8);
-          break;
+          if (!b.fromEnemy && player.ricochet>0 && (b.bounces||0) < 5) {
+            const cx = o.x+o.w/2, cy = o.y+o.h/2;
+            const ox = (b.r + o.w/2) - Math.abs(b.x - cx);
+            const oy = (b.r + o.h/2) - Math.abs(b.y - cy);
+            if (ox < oy) { b.vx = -b.vx; b.x += (b.x < cx ? -ox : ox); }
+            else { b.vy = -b.vy; b.y += (b.y < cy ? -oy : oy); }
+            b.bounces = (b.bounces||0) + 1; burst(b.x,b.y,'#5be0ff',4);
+          } else {
+            b.life=0;
+            if (o.type==='wall') { o.hp--; burst(b.x,b.y,'#c89b6b',6); if (o.hp<=0){ o.dead=true; burst(o.x+o.w/2,o.y+o.h/2,'#c89b6b',16); } }
+            else burst(b.x,b.y,'#9fb0d0',8);
+            break;
+          }
         }
       }
       if (b.life<=0) continue;
@@ -657,6 +668,10 @@
       if (player.multishot>0) {
         ctx.font='bold 12px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.fillStyle='#ffd27b';
         ctx.fillText('⚡多发 '+Math.ceil(player.multishot/60)+'s', player.x, by-4);
+      }
+      if (player.ricochet>0) {
+        ctx.font='bold 12px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.fillStyle='#5be0ff';
+        ctx.fillText('↻弹射 '+Math.ceil(player.ricochet/60)+'s', player.x, by-(player.multishot>0?18:4));
       }
     }
     if (!state.over) {

@@ -279,6 +279,7 @@
     remoteInput: { up:false, down:false, left:false, right:false, fire:false, skill:false, skillIdx:0, prevSkill:false },
     snapTick: 0, inTick: 0, lastSnap: 0, retry: 0,
     obsVer: 0, sentObsVer: -1, prevSnap: null, curSnap: null, snapRecv: 0,
+    entIds: new WeakMap(), eidSeq: {v:0}, paint: new Map(),
   };
   function netStatus(s){ const el=document.getElementById('netStatus'); if(el) el.textContent=s; }
 
@@ -673,6 +674,7 @@
   }
   function sendSnapshot() {
     if (!net.client) return;
+    const entId = (o) => { if (!net.entIds.has(o)) net.entIds.set(o, ++net.eidSeq.v); return net.entIds.get(o); };
     const sendObs = (net.obsVer !== net.sentObsVer);
     const snap = {
       t:'snap', st: Date.now(),
@@ -681,9 +683,9 @@
       obsVer: net.obsVer,
       player: tankState(player),
       player2: player2 ? tankState(player2) : null,
-      enemies: enemies.map(e=>({x:e.x,y:e.y,angle:e.angle,r:e.r,hp:e.hp,maxHp:e.maxHp,color:e.color,type:e.type,dmg:e.dmg,boss:!!e.boss,atkTimer:e.atkTimer,pattern:e.pattern,summonTimer:e.summonTimer,cooldown:e.cooldown})),
-      bullets: bullets.map(b=>({x:b.x,y:b.y,vx:b.vx,vy:b.vy,r:b.r,owner:b.owner,fromEnemy:b.fromEnemy,dmg:b.dmg,life:b.life,bounces:b.bounces||0})),
-      missiles: missiles.map(m=>({x:m.x,y:m.y,vx:m.vx,vy:m.vy,life:m.life})),
+      enemies: enemies.map(e=>({id:entId(e),x:e.x,y:e.y,angle:e.angle,r:e.r,hp:e.hp,maxHp:e.maxHp,color:e.color,type:e.type,dmg:e.dmg,boss:!!e.boss,atkTimer:e.atkTimer,pattern:e.pattern,summonTimer:e.summonTimer,cooldown:e.cooldown})),
+      bullets: bullets.map(b=>({id:entId(b),x:b.x,y:b.y,vx:b.vx,vy:b.vy,r:b.r,owner:b.owner,fromEnemy:b.fromEnemy,dmg:b.dmg,life:b.life,bounces:b.bounces||0})),
+      missiles: missiles.map(m=>({id:entId(m),x:m.x,y:m.y,vx:m.vx,vy:m.vy,life:m.life})),
       buffs: buffs.map(bf=>({x:bf.x,y:bf.y,r:bf.r,type:bf.type,pulse:bf.pulse,label:bf.label})),
       medkits: medkits.map(mk=>({x:mk.x,y:mk.y,r:mk.r,heal:mk.heal,pulse:mk.pulse})),
       obstacles: sendObs ? obstacles.map(o=>({x:o.x,y:o.y,w:o.w,h:o.h,type:o.type,hp:o.hp})) : null,
@@ -703,27 +705,14 @@
       copyTank(player, s.player);
       if (s.player2) { if (!player2) player2=makeTank(true); copyTank(player2, s.player2); } else player2=null;
     }
-    enemies = s.enemies.map(e=>({x:e.x,y:e.y,angle:e.angle,r:e.r,hp:e.hp,maxHp:e.maxHp,color:e.color,type:e.type,dmg:e.dmg,boss:e.boss,atkTimer:e.atkTimer,pattern:e.pattern,summonTimer:e.summonTimer,cooldown:e.cooldown}));
-    bullets = s.bullets.map(b=>({x:b.x,y:b.y,vx:b.vx,vy:b.vy,r:b.r,owner:b.owner,fromEnemy:b.fromEnemy,dmg:b.dmg,life:b.life,bounces:b.bounces}));
-    missiles = s.missiles.map(m=>({x:m.x,y:m.y,vx:m.vx,vy:m.vy,life:m.life,turn:0.09}));
+    enemies = s.enemies.map(e=>({id:e.id,x:e.x,y:e.y,angle:e.angle,r:e.r,hp:e.hp,maxHp:e.maxHp,color:e.color,type:e.type,dmg:e.dmg,boss:e.boss,atkTimer:e.atkTimer,pattern:e.pattern,summonTimer:e.summonTimer,cooldown:e.cooldown}));
+    bullets = s.bullets.map(b=>({id:b.id,x:b.x,y:b.y,vx:b.vx,vy:b.vy,r:b.r,owner:b.owner,fromEnemy:b.fromEnemy,dmg:b.dmg,life:b.life,bounces:b.bounces}));
+    missiles = s.missiles.map(m=>({id:m.id,x:m.x,y:m.y,vx:m.vx,vy:m.vy,life:m.life,turn:0.09}));
     buffs = s.buffs.map(bf=>({x:bf.x,y:bf.y,r:bf.r,type:bf.type,pulse:bf.pulse,life:9999,label:bf.label}));
     medkits = s.medkits ? s.medkits.map(mk=>({x:mk.x,y:mk.y,r:mk.r,heal:mk.heal,pulse:mk.pulse})) : [];
     if (s.obstacles) obstacles = s.obstacles.map(o=>({x:o.x,y:o.y,w:o.w,h:o.h,type:o.type,hp:o.hp,dead:false}));
     updateHUD();
-    // ---- 客人：保存前后两帧用于插值渲染 ----
-    if (net.role==='guest') {
-      if (s.started && !net.started) { net.prevSnap=null; net.curSnap=null; }
-      net.prevSnap = net.curSnap;
-      net.curSnap = {
-        t: s.st || Date.now(),
-        player: { x:player.x, y:player.y, angle:player.angle },
-        player2: player2 ? { x:player2.x, y:player2.y, angle:player2.angle } : null,
-        enemies: enemies.map(e=>({x:e.x,y:e.y,angle:e.angle})),
-        bullets: bullets.map(b=>({x:b.x,y:b.y})),
-        missiles: missiles.map(m=>({x:m.x,y:m.y})),
-      };
-      net.snapRecv = Date.now();
-    }
+    if (s.started && !net.started) net.paint.clear();   // 新一局：清空插值缓存
     if (s.started && !s.over) { net.started=true; if (net.role==='guest') state.running=true; overlay.classList.add('hidden'); }
     if (s.over && !state.over) { const gw = net.mode==='pvp' ? !s.hostWon : s.hostWon; gameOver(gw); }
   }
@@ -781,7 +770,7 @@
       const bH = document.getElementById('btnHost'); if (bH) bH.disabled = true;
       const bJ = document.getElementById('btnJoin'); if (bJ) bJ.disabled = true;
       const rI = document.getElementById('roomCode'); if (rI) rI.disabled = true;
-      net.prevSnap=null; net.curSnap=null;
+      net.paint.clear();
       publish({ t:'hello' });
       state.running = true;
       overlay.classList.remove('hidden');
@@ -842,7 +831,9 @@
 
   // ---- 渲染 ----
   function drawTank(t, kind) {
-    ctx.save(); ctx.translate(t.x,t.y); ctx.rotate(t.angle);
+    const dx = t.renderX!=null ? t.renderX : t.x;
+    const dy = t.renderY!=null ? t.renderY : t.y;
+    ctx.save(); ctx.translate(dx,dy); ctx.rotate(t.angle);
     // 履带
     ctx.fillStyle='#1b2036';
     ctx.fillRect(-t.r,-t.r-4,t.r*2,6); ctx.fillRect(-t.r,t.r-2,t.r*2,6);
@@ -863,7 +854,7 @@
   function drawPlayerSprite() {
     const sk = SKINS[state.skinIdx];
     if (sk.img && sk.img.complete && sk.img.naturalWidth) {
-      ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(player.angle + Math.PI/2);
+      ctx.save(); ctx.translate(player.renderX!=null?player.renderX:player.x, player.renderY!=null?player.renderY:player.y); ctx.rotate(player.angle + Math.PI/2);
       const len = player.r * 2.6;            // 沿炮塔方向的长度
       const w = len, h = len * (sk.img.naturalHeight / sk.img.naturalWidth);
       ctx.drawImage(sk.img, -w/2, -h/2, w, h);
@@ -921,27 +912,26 @@
     }
   }
 
-  function interpRender() {
-    if (net.role!=='guest' || !net.curSnap) return;
-    const INTERP = 100; // 渲染延迟（ms），在两帧快照间平滑
-    const now = Date.now();
-    const targetT = now - INTERP;
-    let alpha;
-    if (net.prevSnap) {
-      const span = net.curSnap.t - net.prevSnap.t;
-      alpha = span > 0 ? (targetT - net.prevSnap.t) / span : 1;
-    } else alpha = 1;
-    if (alpha < 0) alpha = 0; else if (alpha > 1) alpha = 1;
-    const lp = (a,b) => a + (b-a)*alpha;
-    const ps = net.prevSnap, cs = net.curSnap;
-    if (ps && ps.player) { player.x=lp(ps.player.x,cs.player.x); player.y=lp(ps.player.y,cs.player.y); player.angle=lp(ps.player.angle,cs.player.angle); }
-    if (cs.player2 && player2) { if (ps&&ps.player2){player2.x=lp(ps.player2.x,cs.player2.x);player2.y=lp(ps.player2.y,cs.player2.y);player2.angle=lp(ps.player2.angle,cs.player2.angle);} else {player2.x=cs.player2.x;player2.y=cs.player2.y;player2.angle=cs.player2.angle;} }
-    for (let i=0;i<enemies.length;i++){ const c=cs.enemies[i]; if(!c)continue; const p=ps?ps.enemies[i]:null; if(p){enemies[i].x=lp(p.x,c.x);enemies[i].y=lp(p.y,c.y);enemies[i].angle=lp(p.angle,c.angle);} else {enemies[i].x=c.x;enemies[i].y=c.y;enemies[i].angle=c.angle;} }
-    for (let i=0;i<bullets.length;i++){ const c=cs.bullets[i]; if(!c)continue; const p=ps?ps.bullets[i]:null; if(p){bullets[i].x=lp(p.x,c.x);bullets[i].y=lp(p.y,c.y);} else {bullets[i].x=c.x;bullets[i].y=c.y;} }
-    for (let i=0;i<missiles.length;i++){ const c=cs.missiles[i]; if(!c)continue; const p=ps?ps.missiles[i]:null; if(p){missiles[i].x=lp(p.x,c.x);missiles[i].y=lp(p.y,c.y);} else {missiles[i].x=c.x;missiles[i].y=c.y;} }
+  function smoothRender() {
+    if (!(net.role==='guest' && net.connected)) return;
+    const F = 0.35;                       // 缓动系数：越大越跟手、越小越平滑
+    const seen = new Set();
+    const ease = (key, ent, tx, ty) => {
+      let p = net.paint.get(key);
+      if (!p) { p = { x:tx, y:ty }; net.paint.set(key, p); }
+      else { p.x += (tx - p.x) * F; p.y += (ty - p.y) * F; }
+      ent.renderX = p.x; ent.renderY = p.y;
+      seen.add(key);
+    };
+    ease('p', player, player.x, player.y);
+    if (player2) ease('p2', player2, player2.x, player2.y);
+    for (const e of enemies) { if (e.id == null) continue; ease('e'+e.id, e, e.x, e.y); }
+    for (const b of bullets) { if (b.id == null) continue; ease('b'+b.id, b, b.x, b.y); }
+    for (const m of missiles) { if (m.id == null) continue; ease('m'+m.id, m, m.x, m.y); }
+    for (const k of [...net.paint.keys()]) if (!seen.has(k)) net.paint.delete(k);
   }
   function render() {
-    interpRender();
+    smoothRender();
     drawBackground();
     const mp = MAPS[state.mapIdx];
     for (const o of obstacles) {
@@ -979,14 +969,18 @@
     for (const p of particles) { ctx.globalAlpha=clamp(p.life/40,0,1); ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fill(); }
     ctx.globalAlpha=1;
     for (const b of bullets) {
+      const bx = b.renderX!=null ? b.renderX : b.x;
+      const by = b.renderY!=null ? b.renderY : b.y;
       const ec = b.owner==='e';
       ctx.fillStyle=ec?'#ff6b6b':(b.owner==='p2'?'#ffd27b':'#9bffea');
       ctx.shadowColor=ec?'#ff6b6b':(b.owner==='p2'?'#ffd27b':'#9bffea'); ctx.shadowBlur=8;
-      ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+      ctx.beginPath(); ctx.arc(bx,by,b.r,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
     }
     for (const m of missiles) {
+      const mx = m.renderX!=null ? m.renderX : m.x;
+      const my = m.renderY!=null ? m.renderY : m.y;
       ctx.fillStyle='#ff9b4b'; ctx.shadowColor='#ff9b4b'; ctx.shadowBlur=10;
-      ctx.beginPath(); ctx.arc(m.x,m.y,5,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+      ctx.beginPath(); ctx.arc(mx,my,5,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
     }
     for (const ef of effects) {
       if (ef.type==='laser') {
@@ -1005,7 +999,8 @@
       if (player2.dead) { ctx.globalAlpha=0.4; }
       drawTank(player2, 'p2');
       ctx.globalAlpha=1;
-      const bw=40,bx=player2.x-bw/2,by=player2.y-player2.r-16;
+      const bx2=player2.renderX!=null?player2.renderX:player2.x, by2=player2.renderY!=null?player2.renderY:player2.y;
+      const bw=40,bx=bx2-bw/2,by=by2-player2.r-16;
       ctx.fillStyle='#000'; ctx.fillRect(bx-1,by-1,bw+2,6);
       ctx.fillStyle='#ff5b5b'; ctx.fillRect(bx,by,bw,4);
       ctx.fillStyle='#ffb24a'; ctx.fillRect(bx,by,bw*clamp(player2.hp/player2.maxHp,0,1),4);
@@ -1021,17 +1016,18 @@
       ctx.fillText('BOSS',W/2,by+6);
     }
     if (!state.over) {
-      const bw=40,bx=player.x-bw/2,by=player.y-player.r-16;
+      const px=player.renderX!=null?player.renderX:player.x, py=player.renderY!=null?player.renderY:player.y;
+      const bw=40,bx=px-bw/2,by=py-player.r-16;
       ctx.fillStyle='#000'; ctx.fillRect(bx-1,by-1,bw+2,6);
       ctx.fillStyle='#ff5b5b'; ctx.fillRect(bx,by,bw,4);
       ctx.fillStyle='#7fffd4'; ctx.fillRect(bx,by,bw*clamp(player.hp/player.maxHp,0,1),4);
       if (player.multishot>0) {
         ctx.font='bold 12px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.fillStyle='#ffd27b';
-        ctx.fillText('⚡多发 '+Math.ceil(player.multishot/60)+'s', player.x, by-4);
+        ctx.fillText('⚡多发 '+Math.ceil(player.multishot/60)+'s', px, by-4);
       }
       if (player.ricochet>0) {
         ctx.font='bold 12px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.fillStyle='#5be0ff';
-        ctx.fillText('↻弹射 '+Math.ceil(player.ricochet/60)+'s', player.x, by-(player.multishot>0?18:4));
+        ctx.fillText('↻弹射 '+Math.ceil(player.ricochet/60)+'s', px, by-(player.multishot>0?18:4));
       }
     }
     if (!state.over) {

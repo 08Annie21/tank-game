@@ -718,8 +718,10 @@
   function onData(data) {
     if (!data || !data.t) return;
     if (data.t === 'config') { net.mode = data.mode || net.mode; }
-    else if (data.t === 'hello') { netStatus('队友已加入！点"开始游戏"开始'); }
+    else if (data.t === 'hello') { net.guestReady = true; if (net.role==='host' && !state.running) netStatus('队友已就位！点下方「开始游戏（房主·联机）」即可开局'); }
+    else if (data.t === 'start') { if (net.role==='guest') { state.running=true; state.over=false; overlay.classList.add('hidden'); startBtn.textContent='进行中'; netStatus('游戏开始！'); } }
     else if (data.t === 'in') {
+      if (net.role==='host' && !net.guestReady) { net.guestReady = true; if (!state.running) netStatus('队友已就位！点下方「开始游戏（房主·联机）」即可开局'); }
       net.remoteInput = { up:data.up, down:data.down, left:data.left, right:data.right, fire:data.fire, skill:data.skill, skillIdx:data.skillIdx, prevSkill: net.remoteInput.prevSkill };
       if (player2) player2.activeSkill = data.skillIdx||0;
     }
@@ -749,18 +751,24 @@
   }
   function onBrokerReady() {
     if (net.role === 'host') {
-      netStatus('房间码：' + net.room + '（发给朋友即可加入）');
+      net.guestReady = false;
+      netStatus('你是房主🛡 房间码：' + net.room + '（发给朋友，由你点开始）');
       const bH = document.getElementById('btnHost'); if (bH) bH.disabled = true;
-      const rI = document.getElementById('roomCode'); if (rI) rI.value = net.room;
+      const bJ = document.getElementById('btnJoin'); if (bJ) bJ.disabled = true;
+      const rI = document.getElementById('roomCode'); if (rI) { rI.value = net.room; rI.disabled = true; }
+      startBtn.textContent = '开始游戏（房主·联机）';
       publish({ t:'config', mode: net.mode });
-      if (net.pendingStart) { net.pendingStart = false; startGame(); }
+      if (net.pendingStart) { net.pendingStart = false; startGame(); publish({ t:'start' }); }
     } else {
-      netStatus('已连接！等待房主开始…');
+      netStatus('已连接！你是加入方🎮，等待房主开始…');
+      const bH = document.getElementById('btnHost'); if (bH) bH.disabled = true;
+      const bJ = document.getElementById('btnJoin'); if (bJ) bJ.disabled = true;
+      const rI = document.getElementById('roomCode'); if (rI) rI.disabled = true;
       publish({ t:'hello' });
       state.running = true;
       overlay.classList.remove('hidden');
       overlay.querySelector('h1').textContent = '已连接';
-      overlay.querySelector('p').textContent = '等待房主开始游戏…';
+      overlay.querySelector('p').textContent = '等待房主开始游戏…（你无需操作，房主点开始即进入）';
       startBtn.textContent = '等待中';
     }
   }
@@ -796,7 +804,12 @@
     client.on('close', () => {
       if (!connectedOnce) return;     // 连接前的断开由 error 处理
       net.connected = false;
-      netStatus('连接已断开，可重新加入再来一局');
+      const bH = document.getElementById('btnHost'), bJ = document.getElementById('btnJoin'), rI = document.getElementById('roomCode');
+      if (bH) bH.disabled = false;
+      if (bJ) bJ.disabled = false;
+      if (rI) rI.disabled = false;
+      startBtn.textContent = '开始游戏（单人）';
+      netStatus('连接已断开，可重新创建/加入房间再来一局');
       if (state.running && !state.over) gameOver(false);
     });
   }
@@ -1042,8 +1055,9 @@
     if (net.role==='host') {
       if (!net.connected) { net.pendingStart=true; netStatus('等待队友加入后再开始…'); return; }
       startGame();
+      publish({ t:'start' });
     } else if (net.role==='guest') {
-      netStatus('你是加入方，请等待房主开始游戏');
+      netStatus('你是加入方🎮，请等待房主开始游戏');
     } else {
       startGame();
     }

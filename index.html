@@ -275,9 +275,10 @@
   const net = {
     mode: 'coop', role: null, client: null, connected: false,
     started: false, pendingStart: false, room: '', lastWin: false,
-    selfId: '', topic: null, brokerIdx: 0,
+    selfId: '', topic: null, brokerIdx: 0, guestReady: false,
     remoteInput: { up:false, down:false, left:false, right:false, fire:false, skill:false, skillIdx:0, prevSkill:false },
     snapTick: 0, inTick: 0, lastSnap: 0, retry: 0,
+    obsVer: 0, sentObsVer: -1, prevSnap: null, curSnap: null, snapRecv: 0,
   };
   function netStatus(s){ const el=document.getElementById('netStatus'); if(el) el.textContent=s; }
 
@@ -555,7 +556,7 @@
             b.bounces = (b.bounces||0) + 1; burst(b.x,b.y,'#5be0ff',4);
           } else {
             b.life=0;
-            if (o.type==='wall') { o.hp--; burst(b.x,b.y,'#c89b6b',6); if (o.hp<=0){ o.dead=true; burst(o.x+o.w/2,o.y+o.h/2,'#c89b6b',16); } }
+            if (o.type==='wall') { o.hp--; burst(b.x,b.y,'#c89b6b',6); if (o.hp<=0){ o.dead=true; burst(o.x+o.w/2,o.y+o.h/2,'#c89b6b',16); net.obsVer++; } }
             else burst(b.x,b.y,'#9fb0d0',8);
             break;
           }
@@ -672,9 +673,12 @@
   }
   function sendSnapshot() {
     if (!net.client) return;
+    const sendObs = (net.obsVer !== net.sentObsVer);
     const snap = {
-      t:'snap', started: net.started, over: state.over, win: state.win, hostWon: net.lastWin,
+      t:'snap', st: Date.now(),
+      started: net.started, over: state.over, win: state.win, hostWon: net.lastWin,
       wave: state.wave, score: state.score, coins: state.coins, intermission: state.intermission,
+      obsVer: net.obsVer,
       player: tankState(player),
       player2: player2 ? tankState(player2) : null,
       enemies: enemies.map(e=>({x:e.x,y:e.y,angle:e.angle,r:e.r,hp:e.hp,maxHp:e.maxHp,color:e.color,type:e.type,dmg:e.dmg,boss:!!e.boss,atkTimer:e.atkTimer,pattern:e.pattern,summonTimer:e.summonTimer,cooldown:e.cooldown})),
@@ -682,9 +686,9 @@
       missiles: missiles.map(m=>({x:m.x,y:m.y,vx:m.vx,vy:m.vy,life:m.life})),
       buffs: buffs.map(bf=>({x:bf.x,y:bf.y,r:bf.r,type:bf.type,pulse:bf.pulse,label:bf.label})),
       medkits: medkits.map(mk=>({x:mk.x,y:mk.y,r:mk.r,heal:mk.heal,pulse:mk.pulse})),
-      obstacles: obstacles.map(o=>({x:o.x,y:o.y,w:o.w,h:o.h,type:o.type,hp:o.hp})),
-      effects: effects.map(ef=>({type:ef.type,x:ef.x,y:ef.y,angle:ef.angle,len:ef.len,r:ef.r,maxR:ef.maxR,life:ef.life,color:ef.color})),
+      obstacles: sendObs ? obstacles.map(o=>({x:o.x,y:o.y,w:o.w,h:o.h,type:o.type,hp:o.hp})) : null,
     };
+    if (sendObs) net.sentObsVer = net.obsVer;
     try { net.client.publish(net.topic, JSON.stringify(snap)); } catch(e){}
   }
   function applySnapshot(s) {
@@ -704,9 +708,22 @@
     missiles = s.missiles.map(m=>({x:m.x,y:m.y,vx:m.vx,vy:m.vy,life:m.life,turn:0.09}));
     buffs = s.buffs.map(bf=>({x:bf.x,y:bf.y,r:bf.r,type:bf.type,pulse:bf.pulse,life:9999,label:bf.label}));
     medkits = s.medkits ? s.medkits.map(mk=>({x:mk.x,y:mk.y,r:mk.r,heal:mk.heal,pulse:mk.pulse})) : [];
-    obstacles = s.obstacles.map(o=>({x:o.x,y:o.y,w:o.w,h:o.h,type:o.type,hp:o.hp,dead:false}));
-    effects = s.effects.map(ef=>({type:ef.type,x:ef.x,y:ef.y,angle:ef.angle,len:ef.len,r:ef.r,maxR:ef.maxR,life:ef.life,color:ef.color}));
+    if (s.obstacles) obstacles = s.obstacles.map(o=>({x:o.x,y:o.y,w:o.w,h:o.h,type:o.type,hp:o.hp,dead:false}));
     updateHUD();
+    // ---- 客人：保存前后两帧用于插值渲染 ----
+    if (net.role==='guest') {
+      if (s.started && !net.started) { net.prevSnap=null; net.curSnap=null; }
+      net.prevSnap = net.curSnap;
+      net.curSnap = {
+        t: s.st || Date.now(),
+        player: { x:player.x, y:player.y, angle:player.angle },
+        player2: player2 ? { x:player2.x, y:player2.y, angle:player2.angle } : null,
+        enemies: enemies.map(e=>({x:e.x,y:e.y,angle:e.angle})),
+        bullets: bullets.map(b=>({x:b.x,y:b.y})),
+        missiles: missiles.map(m=>({x:m.x,y:m.y})),
+      };
+      net.snapRecv = Date.now();
+    }
     if (s.started && !s.over) { net.started=true; if (net.role==='guest') state.running=true; overlay.classList.add('hidden'); }
     if (s.over && !state.over) { const gw = net.mode==='pvp' ? !s.hostWon : s.hostWon; gameOver(gw); }
   }
@@ -735,8 +752,8 @@
   }
   // ---- 联机：MQTT over WebSocket 中继（不依赖 WebRTC / 无需自建服务器）----
   const BROKERS = [
-    'wss://broker.emqx.io:8084/mqtt',
     'wss://broker-cn.emqx.io:8084/mqtt',
+    'wss://broker.emqx.io:8084/mqtt',
     'wss://test.mosquitto.org:8081/mqtt',
   ];
   function publish(msg) {
@@ -764,6 +781,7 @@
       const bH = document.getElementById('btnHost'); if (bH) bH.disabled = true;
       const bJ = document.getElementById('btnJoin'); if (bJ) bJ.disabled = true;
       const rI = document.getElementById('roomCode'); if (rI) rI.disabled = true;
+      net.prevSnap=null; net.curSnap=null;
       publish({ t:'hello' });
       state.running = true;
       overlay.classList.remove('hidden');
@@ -903,7 +921,27 @@
     }
   }
 
+  function interpRender() {
+    if (net.role!=='guest' || !net.curSnap) return;
+    const INTERP = 100; // 渲染延迟（ms），在两帧快照间平滑
+    const now = Date.now();
+    const targetT = now - INTERP;
+    let alpha;
+    if (net.prevSnap) {
+      const span = net.curSnap.t - net.prevSnap.t;
+      alpha = span > 0 ? (targetT - net.prevSnap.t) / span : 1;
+    } else alpha = 1;
+    if (alpha < 0) alpha = 0; else if (alpha > 1) alpha = 1;
+    const lp = (a,b) => a + (b-a)*alpha;
+    const ps = net.prevSnap, cs = net.curSnap;
+    if (ps && ps.player) { player.x=lp(ps.player.x,cs.player.x); player.y=lp(ps.player.y,cs.player.y); player.angle=lp(ps.player.angle,cs.player.angle); }
+    if (cs.player2 && player2) { if (ps&&ps.player2){player2.x=lp(ps.player2.x,cs.player2.x);player2.y=lp(ps.player2.y,cs.player2.y);player2.angle=lp(ps.player2.angle,cs.player2.angle);} else {player2.x=cs.player2.x;player2.y=cs.player2.y;player2.angle=cs.player2.angle;} }
+    for (let i=0;i<enemies.length;i++){ const c=cs.enemies[i]; if(!c)continue; const p=ps?ps.enemies[i]:null; if(p){enemies[i].x=lp(p.x,c.x);enemies[i].y=lp(p.y,c.y);enemies[i].angle=lp(p.angle,c.angle);} else {enemies[i].x=c.x;enemies[i].y=c.y;enemies[i].angle=c.angle;} }
+    for (let i=0;i<bullets.length;i++){ const c=cs.bullets[i]; if(!c)continue; const p=ps?ps.bullets[i]:null; if(p){bullets[i].x=lp(p.x,c.x);bullets[i].y=lp(p.y,c.y);} else {bullets[i].x=c.x;bullets[i].y=c.y;} }
+    for (let i=0;i<missiles.length;i++){ const c=cs.missiles[i]; if(!c)continue; const p=ps?ps.missiles[i]:null; if(p){missiles[i].x=lp(p.x,c.x);missiles[i].y=lp(p.y,c.y);} else {missiles[i].x=c.x;missiles[i].y=c.y;} }
+  }
   function render() {
+    interpRender();
     drawBackground();
     const mp = MAPS[state.mapIdx];
     for (const o of obstacles) {

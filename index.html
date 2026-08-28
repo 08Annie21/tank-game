@@ -279,6 +279,7 @@
     remoteInput: { up:false, down:false, left:false, right:false, fire:false, skill:false, skillIdx:0, prevSkill:false },
     snapTick: 0, inTick: 0, lastSnap: 0, retry: 0,
     obsVer: 0, sentObsVer: -1, prevSnap: null, curSnap: null, snapRecv: 0,
+    guestInitPos: false,
     entIds: new WeakMap(), eidSeq: {v:0}, paint: new Map(),
   };
   function netStatus(s){ const el=document.getElementById('netStatus'); if(el) el.textContent=s; }
@@ -487,10 +488,18 @@
   function update() {
     if (!state.running || state.paused) return;
 
-    // ---- 联机 guest：只发送输入 + 应用 host 快照 ----
+    // ---- 联机 guest：本机预测自己的坦克移动（即时响应），并把输入发给房主 ----
     if (net.role === 'guest') {
       net.inTick++;
       if (net.inTick % 2 === 0) sendInput();
+      if (state.running && !state.paused && !player.dead) {
+        // 自己的坦克用自己按下的键在本地立即移动，不等房主回传 → 消除“移动了等于没移动”
+        const isP2 = (net.mode !== 'pvp'); // coop: 瞄准敌人；pvp: 瞄准对手(player2)
+        predictMove(player, {
+          up: keys['w']||keys['arrowup'], down: keys['s']||keys['arrowdown'],
+          left: keys['a']||keys['arrowleft'], right: keys['d']||keys['arrowright']
+        }, isP2);
+      }
       return;
     }
 
@@ -662,6 +671,14 @@
     if (input.skill && !input.prevSkill) activateSkill(tank);
     input.prevSkill = input.skill;
   }
+  // 本机预测用的轻量移动：只动位置/朝向，不开火、不放技能（子弹/技能由房主权威生成，避免重复）
+  function predictMove(tank, input, isP2) {
+    let dx=0, dy=0;
+    if (input.up) dy-=1; if (input.down) dy+=1; if (input.left) dx-=1; if (input.right) dx+=1;
+    if (dx||dy) { const len=Math.hypot(dx,dy); const mv=slideMove(tank, tank.x+dx/len*tank.speed, tank.y+dy/len*tank.speed); tank.x=mv.x; tank.y=mv.y; pushOutOfObstacles(tank); }
+    const target = aimTarget(tank, isP2);
+    if (target) tank.angle = Math.atan2(target.y-tank.y, target.x-tank.x);
+  }
   function checkEnd() {
     if (state.over) return;
     if (net.mode === 'pvp') {
@@ -698,8 +715,15 @@
     state.wave=s.wave; state.score=s.score; state.coins=s.coins; state.intermission=s.intermission;
     state.over=s.over; state.win=s.win;
     if (net.role==='guest') {
-      // guest 的本机坦克 = 快照里的 player2；远端房主坦克 = player
-      copyTank(player, s.player2);
+      // guest 的本机坦克：位置由本机预测驱动；房主快照只纠正血量/状态，位置仅在偏差过大时拉回
+      const sp = s.player2;
+      if (sp) {
+        if (!net.guestInitPos) { player.x = sp.x; player.y = sp.y; player.angle = sp.angle; net.guestInitPos = true; }
+        player.hp = sp.hp; player.maxHp = sp.maxHp; player.dead = sp.dead;
+        player.multishot = sp.multishot; player.ricochet = sp.ricochet; player.activeSkill = sp.activeSkill; player.cooldown = sp.cooldown;
+        const dx = sp.x - player.x, dy = sp.y - player.y;
+        if (Math.hypot(dx,dy) > 80) { player.x += dx*0.5; player.y += dy*0.5; }
+      }
       if (s.player) { if (!player2) player2=makeTank(false); copyTank(player2, s.player); } else player2=null;
     } else {
       copyTank(player, s.player);
@@ -712,7 +736,7 @@
     medkits = s.medkits ? s.medkits.map(mk=>({x:mk.x,y:mk.y,r:mk.r,heal:mk.heal,pulse:mk.pulse})) : [];
     if (s.obstacles) obstacles = s.obstacles.map(o=>({x:o.x,y:o.y,w:o.w,h:o.h,type:o.type,hp:o.hp,dead:false}));
     updateHUD();
-    if (s.started && !net.started) net.paint.clear();   // 新一局：清空插值缓存
+    if (s.started && !net.started) { net.paint.clear(); net.guestInitPos=false; }   // 新一局：清空插值缓存与位置初始化标记
     if (s.started && !s.over) { net.started=true; if (net.role==='guest') state.running=true; overlay.classList.add('hidden'); }
     if (s.over && !state.over) { const gw = net.mode==='pvp' ? !s.hostWon : s.hostWon; gameOver(gw); }
   }
@@ -725,7 +749,7 @@
     if (!data || !data.t) return;
     if (data.t === 'config') { net.mode = data.mode || net.mode; }
     else if (data.t === 'hello') { net.guestReady = true; if (net.role==='host' && !state.running) netStatus('队友已就位！点下方「开始游戏（房主·联机）」即可开局'); }
-    else if (data.t === 'start') { if (net.role==='guest') { state.running=true; state.over=false; overlay.classList.add('hidden'); startBtn.textContent='进行中'; netStatus('游戏开始！'); } }
+    else if (data.t === 'start') { if (net.role==='guest') { state.running=true; state.over=false; net.guestInitPos=false; overlay.classList.add('hidden'); startBtn.textContent='进行中'; netStatus('游戏开始！'); } }
     else if (data.t === 'in') {
       if (net.role==='host' && !net.guestReady) { net.guestReady = true; if (!state.running) netStatus('队友已就位！点下方「开始游戏（房主·联机）」即可开局'); }
       net.remoteInput = { up:data.up, down:data.down, left:data.left, right:data.right, fire:data.fire, skill:data.skill, skillIdx:data.skillIdx, prevSkill: net.remoteInput.prevSkill };
